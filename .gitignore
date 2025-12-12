@@ -1,0 +1,19 @@
+# 忽略数据库
+*.db
+*.db-shm
+*.db-wal
+/data/
+
+# 忽略密钥和配置
+.env
+config.yaml
+config_dev.yaml
+
+# 忽略编译文件
+gateway
+*.exe
+*.o
+
+# 忽略 IDE 配置文件
+.vscode/
+.idea/
