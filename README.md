@@ -4,11 +4,12 @@
 [![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
 ![Docker Image Size (tag)](https://img.shields.io/docker/image-size/zqverse0/llm-gateway/latest)
 
-[English](#english) | [简体中文](#简体中文)
+[English](#english) | [简体中文](#chinese)
 
 ---
 
-<a name="english"></a>
+<div id="english"></div>
+
 ## 📖 English
 
 > **High-performance, stateless LLM gateway with intelligent load balancing and failover.**
@@ -29,8 +30,9 @@ Go-LLM-Router is an enterprise-grade, production-ready API gateway designed for 
 * **🔌 OpenAI Compatible**: Full support for Streaming, Non-Streaming, and Vision (Multimodal) requests.
 
 ### 🛠️ Quick Start
+<img width="1493" height="998" alt="image" src="https://github.com/user-attachments/assets/38a69051-3685-442e-a168-c9aa314886eb" />
 
-**Option 1: Docker Run (Recommended)**
+#### Option 1: Docker Run (Recommended)
 
 ```bash
 docker run -d \
@@ -39,6 +41,7 @@ docker run -d \
   -v $(pwd)/data:/app/data \
   zqverse0/llm-gateway:latest
 Option 2: Docker Compose
+Create a docker-compose.yml:
 
 YAML
 
@@ -46,14 +49,21 @@ version: '3.8'
 services:
   go-llm-router:
     image: zqverse0/llm-gateway:latest
+    container_name: go-llm-router
     ports:
       - "8000:8000"
     volumes:
       - ./data:/app/data
     restart: unless-stopped
-Dashboard Access: Visit http://localhost:8000/demo to manage models and keys.
+Then run:
 
-<a name="简体中文"></a>
+Bash
+
+docker-compose up -d
+Dashboard Access
+Open your browser and navigate to http://localhost:8000/demo to access the web management interface.
+
+<div id="chinese"></div>
 
 📖 简体中文
 高性能、无状态的 LLM 企业级网关，专注于负载均衡与故障转移。
@@ -149,7 +159,7 @@ response = client.chat.completions.create(
 Bash
 
 # 克隆项目
-git clone [https://github.com/zqverse0/Go-LLM-Router.git](https://github.com/zqverse0/Go-LLM-Router.git)
+git clone https://github.com/zqverse0/Go-LLM-Router.git
 cd Go-LLM-Router
 
 # 安装依赖
