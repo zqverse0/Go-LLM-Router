@@ -57,6 +57,7 @@ docker run -d \
   -v $(pwd)/data:/app/data \
   zqverse0/llm-gateway:latest
 ```
+<img width="1534" height="987" alt="image" src="https://github.com/user-attachments/assets/7436578d-73b8-4149-8363-6546b02e3352" />
 
 ### ⚙️ Configuration
 
