@@ -2,133 +2,163 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
+![Docker Image Size (tag)](https://img.shields.io/docker/image-size/zqverse0/llm-gateway/latest)
+
+[English](#english) | [简体中文](#简体中文)
+
+---
+
+<a name="english"></a>
+## 📖 English
 
 > **High-performance, stateless LLM gateway with intelligent load balancing and failover.**
 
-Go-LLM-Router is an enterprise-grade, production-ready API gateway for Large Language Models. Built with Go and Gin framework, it provides seamless load balancing, intelligent failover, and circuit breaker capabilities to ensure high availability and optimal performance for your LLM applications.
+Go-LLM-Router is an enterprise-grade, production-ready API gateway designed for Large Language Models. Built with Go and Gin, it offers seamless load balancing, intelligent circuit breaking, and Docker optimization (~40MB).
 
-![Dashboard Screenshot](screenshot.png)
-*(Optional: Place a screenshot.png in your repo to show off the dashboard)*
+### 🚀 Key Features
 
-## ������ Features
+* **🔄 Multi-Strategy Routing**:
+    * **Round-Robin**: Distributes traffic across multiple API keys to balance token usage.
+    * **Fallback**: Automatically tries the next key/model upon 401/429 errors.
+    * **Pinned Mode**: Route to a specific channel using `model$index` syntax (e.g., `Ai-chat$2`).
+* **🛡️ Smart Circuit Breaker**:
+    * **Soft Errors**: Retries on Auth/RateLimit errors.
+    * **Hard Errors**: Skips models immediately on 404/Connection Refused to prevent latency.
+    * **Empty Key Skip**: Automatically bypasses models with no configured keys.
+* **⚡ Lightweight**: Zero dependencies (Embedded SQLite), starts instantly.
+* **🔌 OpenAI Compatible**: Full support for Streaming, Non-Streaming, and Vision (Multimodal) requests.
 
-### ������ Multi-Strategy Routing
-- **Round-Robin**: Automatic load distribution across multiple API keys with token consumption balancing.
-- **Fallback**: Intelligent error-based failover. If one key fails (401/429), it automatically tries the next.
-- **Pinned Mode**: Direct routing using `model$index` syntax (e.g., `Ai-chat$2`) for specific channel selection/testing.
+### 🛠️ Quick Start
 
-### ������️ Smart Circuit Breaker
-- **Soft Error Handling**: Automatic retry on 401/429/5xx errors.
-- **Hard Error Detection**: Immediate model switching on 404/Connection Refused errors to prevent wasted retries.
-- **Empty Key Skip**: Automatically skips models with no valid keys configured.
-
-### ⚡ Lightweight Architecture
-- **Zero External Dependencies**: Embedded SQLite database. No Redis/MySQL required.
-- **Docker Optimized**: Ultra-lightweight container image (~40MB) with multi-stage builds.
-- **Built-in Dashboard**: Web management interface at `/demo` with hot-reload configuration.
-
-### ������ OpenAI Compatible
-- Full compatibility with OpenAI API format.
-- Support for both **Streaming** and **Non-Streaming** responses.
-- Automatic parsing of **Multimodal (Vision)** requests.
-
-## ������️ Quick Start
-
-### Option 1: Docker Run (Recommended)
+**Option 1: Docker Run (Recommended)**
 
 ```bash
-# Pull and run (Assuming you build it locally as llm-gateway:latest)
 docker run -d \
   --name go-llm-router \
   -p 8000:8000 \
   -v $(pwd)/data:/app/data \
-  llm-gateway:latest
+  zqverse0/llm-gateway:latest
 Option 2: Docker Compose
-Create a docker-compose.yml:
 
 YAML
 
 version: '3.8'
 services:
   go-llm-router:
-    build: .  # Build from source
+    image: zqverse0/llm-gateway:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+Dashboard Access: Visit http://localhost:8000/demo to manage models and keys.
+
+<a name="简体中文"></a>
+
+📖 简体中文
+高性能、无状态的 LLM 企业级网关，专注于负载均衡与故障转移。
+
+Go-LLM-Router 是一个基于 Go (Gin) 开发的轻量级大模型网关。它不依赖 Redis 或 MySQL，仅需一个 Docker 镜像即可提供企业级的高可用接入能力。
+
+🚀 核心功能
+🔄 多策略路由 (Routing):
+
+负载均衡 (Round-Robin): 支持多 Key 轮询，自动均摊 Token 消耗，避免单 Key 限速。
+
+故障转移 (Failover): 遇到 401/429 错误自动重试下一个 Key；遇到 502 自动切换备用模型。
+
+定向路由 (Pinned Mode): 支持通过 模型名$序号 (如 Ai-chat$2) 强制指定使用第几个 Key，便于测试或计费隔离。
+
+🛡️ 智能熔断 (Circuit Breaker):
+
+软错误: 认证失败、限流时自动重试。
+
+硬错误: 遇到 404 或网络拒接时，立即跳过当前模型，防止无效等待。
+
+空 Key 跳过: 自动检测并跳过未配置 Key 的模型组。
+
+⚡ 极简架构: 零外部依赖 (内置 SQLite)，Docker 镜像仅 ~40MB，启动即用。
+
+🔌 完美兼容: 100% 兼容 OpenAI 接口格式，支持流式 (Stream) 和多模态 (Vision) 请求。
+
+🛠️ 快速开始
+方式一：Docker 启动 (推荐)
+Bash
+
+docker run -d \
+  --name go-llm-router \
+  -p 8000:8000 \
+  -v $(pwd)/data:/app/data \
+  zqverse0/llm-gateway:latest
+方式二：Docker Compose
+创建 docker-compose.yml:
+
+YAML
+
+version: '3.8'
+services:
+  go-llm-router:
+    image: zqverse0/llm-gateway:latest # 请替换为你实际的镜像名
     container_name: go-llm-router
     ports:
       - "8000:8000"
     volumes:
       - ./data:/app/data
-    environment:
-      - GIN_MODE=release
     restart: unless-stopped
-Then run:
+启动服务：
 
 Bash
 
 docker-compose up -d
-Access Dashboard
-Open your browser and navigate to http://localhost:8000/demo to access the web management interface.
+⚙️ 配置指南
+本项目采用 可视化配置，无需手写配置文件。
 
-⚙️ Configuration
-No config files needed! This project uses a built-in Dashboard for management.
+浏览器访问 http://localhost:8000/demo 进入管理后台。
 
-Navigate to http://localhost:8000/demo.
+创建模型组: 例如 Group ID 填 gpt-4，策略选 round_robin。
 
-Create a Model Group: e.g., Group ID gpt-4, Strategy round_robin.
+添加模型: 填写上游渠道（如 OpenAI, DeepSeek, Azure）。
 
-Add Models: Add upstream providers (e.g., OpenAI, Azure, DeepSeek).
+添加密钥: 为每个模型配置多个 Key。
 
-Add Keys: Add multiple API keys for each model.
+热重载: 点击保存，配置立即生效，无需重启容器。
 
-Changes are applied immediately (Hot-Reload).
-
-������ Usage Guide
-Standard OpenAI SDK Usage
-The gateway is fully compatible with the official OpenAI SDK. Just change the base_url.
-
+💻 调用示例
+Python (OpenAI SDK)
 Python
 
 import openai
 
 client = openai.OpenAI(
-    api_key="sk-any-key",  # The gateway handles real keys internally
+    api_key="sk-any-key",  # 网关内部管理真实 Key，此处随便填
     base_url="http://localhost:8000/v1"
 )
 
-# Standard chat completion
+# 1. 普通负载均衡请求
 response = client.chat.completions.create(
-    model="gpt-3.5-turbo", # Matches your Group ID in Dashboard
-    messages=[{"role": "user", "content": "Hello!"}]
+    model="gpt-4", # 对应后台配置的 Group ID
+    messages=[{"role": "user", "content": "你好"}]
 )
-Advanced: Pinned Mode Routing
-Force usage of a specific model/key combination for testing or billing separation:
 
-Python
-
-# Use the 2nd model/key in the "Ai-chat" group
+# 2. 定向路由请求 (强制使用第 2 个 Key)
 response = client.chat.completions.create(
-    model="Ai-chat$2", 
-    messages=[{"role": "user", "content": "Hello!"}]
+    model="gpt-4$1", # 索引从 0 开始，$1 代表第 2 个
+    messages=[{"role": "user", "content": "你好"}]
 )
-������ Development
-Prerequisites
-Go 1.21+
-
-Docker (optional)
-
-Local Build
+💻 本地开发
 Bash
 
-# Clone the repository
+# 克隆项目
 git clone [https://github.com/zqverse0/Go-LLM-Router.git](https://github.com/zqverse0/Go-LLM-Router.git)
 cd Go-LLM-Router
 
-# Install dependencies
+# 安装依赖
 go mod download
 
-# Run
+# 运行
 go run ./cmd
-������ Contributing
-We welcome contributions! Please feel free to submit a Pull Request.
+🤝 贡献 (Contributing)
+欢迎提交 Pull Request 或 Issue！
 
-������ License
-This project is licensed under the MIT License - see the LICENSE file for details.
+📄 协议 (License)
+本项目基于 MIT License 开源。
