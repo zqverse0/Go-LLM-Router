@@ -68,7 +68,7 @@ This is an open-source learning project. I welcome any suggestions, PRs, or issu
 
 -----
 
-\<a id="chinese"\>\</a\>
+<a id="chinese"></a>
 
 ## 📖 简体中文
 
