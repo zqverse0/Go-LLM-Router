@@ -1,6 +1,9 @@
 package models
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"time"
 	"gorm.io/gorm"
 )
 
@@ -8,7 +11,14 @@ import (
 type GatewaySettings struct {
 	gorm.Model
 	Port    int    `gorm:"default:8000" json:"port"`
-	APIKey  string `gorm:"not null" json:"api_key"`
+}
+
+// AdminKey 管理员密钥
+type AdminKey struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Name      string    `json:"name"`                                    // 备注，如 "MacBook Pro"
+	Key       string    `gorm:"uniqueIndex:idx_admin_key_deleted" json:"key"` // 实际的 sk-admin-xxx
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // ModelConfig 模型配置
@@ -39,7 +49,7 @@ type APIKey struct {
 // ModelGroup 模型组配置，支持策略配置
 type ModelGroup struct {
 	gorm.Model
-	GroupID  string `gorm:"uniqueIndex;not null" json:"group_id"`
+	GroupID  string `gorm:"uniqueIndex:idx_group_id_deleted;not null" json:"group_id"`
 	Strategy string `gorm:"default:fallback" json:"strategy"` // "fallback" 或 "round_robin"
 
 	// 关联关系
@@ -76,6 +86,7 @@ type RoutingInfo struct {
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&GatewaySettings{},
+		&AdminKey{},
 		&ModelGroup{},
 		&ModelConfig{},
 		&APIKey{},
@@ -83,8 +94,18 @@ func AutoMigrate(db *gorm.DB) error {
 	)
 }
 
+// GenerateAdminKey 生成管理员密钥
+func GenerateAdminKey() string {
+	// 生成 16 字节的随机字符串
+	bytes := make([]byte, 16)
+	rand.Read(bytes)
+	return "sk-admin-" + hex.EncodeToString(bytes)
+}
+
+// GenerateGatewayToken 生成网关访问令牌
+
 // InitializeDefaultData 初始化默认数据
-func InitializeDefaultData(db *gorm.DB) error {
+func InitializeDefaultData(db *gorm.DB) (string, error) {
 	// 检查是否已有网关设置
 	var count int64
 	db.Model(&GatewaySettings{}).Count(&count)
@@ -92,12 +113,26 @@ func InitializeDefaultData(db *gorm.DB) error {
 		// 创建默认网关设置
 		gateway := GatewaySettings{
 			Port:   8000,
-			APIKey: "test-gateway-token",
 		}
 		if err := db.Create(&gateway).Error; err != nil {
-			return err
+			return "", err
 		}
 	}
 
-	return nil
+	// 检查是否已有管理员密钥
+	var adminCount int64
+	db.Model(&AdminKey{}).Count(&adminCount)
+	if adminCount == 0 {
+		// 生成初始管理员密钥
+		adminKey := AdminKey{
+			Name: "Initial Root Key",
+			Key:  GenerateAdminKey(),
+		}
+		if err := db.Create(&adminKey).Error; err != nil {
+			return "", err
+		}
+		return adminKey.Key, nil
+	}
+
+	return "", nil
 }

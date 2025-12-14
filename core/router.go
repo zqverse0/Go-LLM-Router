@@ -141,7 +141,7 @@ func (r *StatelessModelRouter) RefreshData() error {
 	return r.loadData()
 }
 
-// ✅ 【新增】GetModelByIndex 直接获取指定位置的模型
+// GetModelByIndex 直接获取指定位置的模型
 func (r *StatelessModelRouter) GetModelByIndex(groupID string, index int) (*models.ModelConfig, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -158,7 +158,7 @@ func (r *StatelessModelRouter) GetModelByIndex(groupID string, index int) (*mode
 	return models[index], nil
 }
 
-// ✅ 【新增】GetKeyByIndex 直接获取指定位置的Key
+// GetKeyByIndex 直接获取指定位置的Key
 func (r *StatelessModelRouter) GetKeyByIndex(model *models.ModelConfig, index int) (string, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -176,7 +176,7 @@ func (r *StatelessModelRouter) GetKeyByIndex(model *models.ModelConfig, index in
 	return keys[index], nil
 }
 
-// ✅ 【新增】GetTotalModels 获取组内模型总数
+// GetTotalModels 获取组内模型总数
 func (r *StatelessModelRouter) GetTotalModels(groupID string) int {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -188,7 +188,7 @@ func (r *StatelessModelRouter) GetTotalModels(groupID string) int {
 	return len(models)
 }
 
-// ✅ 【新增】GetTotalKeys 获取模型内Key总数
+// GetTotalKeys 获取模型内Key总数
 func (r *StatelessModelRouter) GetTotalKeys(model *models.ModelConfig) int {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -201,7 +201,7 @@ func (r *StatelessModelRouter) GetTotalKeys(model *models.ModelConfig) int {
 	return len(keys)
 }
 
-// ✅ 【新增】getGroupCounter 获取或初始化组计数器（内部方法）
+// getGroupCounter 获取或初始化组计数器（内部方法）
 func (r *StatelessModelRouter) getGroupCounter(groupID string) *uint64 {
 	// 获取或惰性初始化全局计数器
 	globalRRMutex.RLock()
@@ -223,7 +223,7 @@ func (r *StatelessModelRouter) getGroupCounter(groupID string) *uint64 {
 	return rrCounter
 }
 
-// ✅ 【新增】GetInitialModelIndex 获取初始模型索引（用于无状态轮询）
+// GetInitialModelIndex 获取初始模型索引（用于无状态轮询）
 func (r *StatelessModelRouter) GetInitialModelIndex(groupID string) int {
 	r.mutex.RLock()
 	group, exists := r.modelGroups[groupID]
@@ -249,7 +249,7 @@ func (r *StatelessModelRouter) GetInitialModelIndex(groupID string) int {
 	}
 }
 
-// ✅ 【新增】GetInitialKeyIndex 获取初始Key索引（用于 round_robin 策略的Key轮询）
+// GetInitialKeyIndex 获取初始Key索引（用于 round_robin 策略的Key轮询）
 func (r *StatelessModelRouter) GetInitialKeyIndex(modelID uint) int {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -308,7 +308,7 @@ func (r *StatelessModelRouter) GetInitialKeyIndex(modelID uint) int {
 	}
 }
 
-// ✅ 【保留】CalculateMaxRetries 计算动态最大重试次数
+// CalculateMaxRetries 计算动态最大重试次数
 func (r *StatelessModelRouter) CalculateMaxRetries(groupID string) int {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -340,7 +340,7 @@ func (r *StatelessModelRouter) CalculateMaxRetries(groupID string) int {
 	return maxRetries
 }
 
-// ✅ 【保留】ParseModelRouting 解析模型路由字符串，支持定向路由功能
+// ParseModelRouting 解析模型路由字符串，支持定向路由功能
 func (r *StatelessModelRouter) ParseModelRouting(modelInput string) *models.RoutingInfo {
 	if modelInput == "" {
 		return &models.RoutingInfo{GroupID: modelInput, IsPinned: false}
@@ -348,6 +348,35 @@ func (r *StatelessModelRouter) ParseModelRouting(modelInput string) *models.Rout
 
 	// 检查是否包含分隔符
 	if !strings.Contains(modelInput, "$") {
+		// 【新增】智能查找逻辑：先尝试作为模型ID查找，再尝试作为组ID查找
+		// 1. 先尝试作为模型ID查找（通过检查所有组的所有模型）
+		for groupID, modelGroup := range r.GetAllModelGroups() {
+			for idx, model := range modelGroup.Models {
+				if model.UpstreamModel == modelInput {
+					// 找到模型，使用其所属的组
+					modelIndex := idx // 使用数组索引作为模型索引
+					r.logger.Infof("[INFO] Smart Routing | Model: %s -> Group: %s | Index: %d", modelInput, groupID, idx)
+					return &models.RoutingInfo{
+						GroupID:    groupID,
+						ModelIndex: &modelIndex,
+						IsPinned:   true, // 直接使用特定模型
+					}
+				}
+			}
+		}
+
+		// 2. 尝试作为组ID查找
+		if _, err := r.GetModelGroup(modelInput); err == nil {
+			// 找到组，使用组的第一个模型
+			r.logger.Infof("[INFO] Smart Routing | Group: %s -> Using first available model", modelInput)
+			return &models.RoutingInfo{
+				GroupID:  modelInput,
+				IsPinned: false, // 使用组的默认轮询/策略
+			}
+		}
+
+		// 3. 都没找到，返回原始值（可能导致后续错误，但会记录日志）
+		r.logger.Warnf("[WARN] Smart Routing | Not Found: %s | Will use as group ID (may fail)", modelInput)
 		return &models.RoutingInfo{GroupID: modelInput, IsPinned: false}
 	}
 
@@ -385,7 +414,7 @@ func (r *StatelessModelRouter) ParseModelRouting(modelInput string) *models.Rout
 	}
 }
 
-// ✅ 【保留】GetModelGroup 获取指定模型组
+// GetModelGroup 获取指定模型组
 func (r *StatelessModelRouter) GetModelGroup(groupID string) (*models.ModelGroup, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -400,18 +429,7 @@ func (r *StatelessModelRouter) GetModelGroup(groupID string) (*models.ModelGroup
 	return &groupCopy, nil
 }
 
-// ✅ 【保留】BuildAPIEndpoint 智能构建API端点URL
-func (r *StatelessModelRouter) BuildAPIEndpoint(upstreamURL string) string {
-	baseURL := strings.TrimSuffix(upstreamURL, "/")
-
-	// 检查是否已经包含 /v1
-	if strings.HasSuffix(baseURL, "/v1") {
-		return baseURL + "/chat/completions"
-	}
-	return baseURL + "/v1/chat/completions"
-}
-
-// ✅ 【保留】状态码判断方法
+// 状态码判断方法
 func (r *StatelessModelRouter) IsClientError(statusCode int) bool {
 	return statusCode >= 400 && statusCode < 500 && statusCode != 401 && statusCode != 403 && statusCode != 429
 }
@@ -424,7 +442,7 @@ func (r *StatelessModelRouter) IsServerError(statusCode int) bool {
 	return statusCode >= 500
 }
 
-// ✅ 【新增】IsHardError 判断是否为硬错误（配置级错误）
+// IsHardError 判断是否为硬错误（配置级错误）
 func (r *StatelessModelRouter) IsHardError(statusCode int, err error) bool {
 	// 检查状态码
 	switch statusCode {
@@ -456,7 +474,7 @@ func (r *StatelessModelRouter) IsHardError(statusCode int, err error) bool {
 	return false
 }
 
-// ✅ 【保留】统计相关方法
+// 统计相关方法
 func (r *StatelessModelRouter) UpdateStats(groupID string, modelIndex int, success bool, latency float64) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -533,7 +551,7 @@ func (r *StatelessModelRouter) GetStats(groupID string, modelIndex int) *models.
 	}
 }
 
-// ✅ 【保留】其他必要方法
+// 其他必要方法
 func (r *StatelessModelRouter) GetGatewaySettings() *models.GatewaySettings {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -617,7 +635,7 @@ func (r *StatelessModelRouter) UpgradeToWebSocket(c *gin.Context) (*websocket.Co
 	return upgrader.Upgrade(c.Writer, c.Request, nil)
 }
 
-// ✅ 【新增】GetModelKeys 获取模型的所有 API Keys
+// GetModelKeys 获取模型的所有 API Keys
 func (r *StatelessModelRouter) GetModelKeys(modelID uint) ([]string, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()

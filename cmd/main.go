@@ -59,7 +59,7 @@ func main() {
 	api := engine.Group("/")
 	api.Use(requestLoggerMiddleware(log))
 	{
-		api.POST("/v1/chat/completions", verifyGatewayToken(router), proxyHandler.HandleProxyRequest(router))
+		api.POST("/v1/chat/completions", verifyAdminToken(router), proxyHandler.HandleProxyRequest(router))
 	}
 
 	// 设置路由
@@ -119,12 +119,56 @@ func initDatabase(log *logrus.Logger) (*gorm.DB, error) {
 	}
 
 	// 初始化默认数据
-	if err := models.InitializeDefaultData(db); err != nil {
+	initialAdminKey, err := models.InitializeDefaultData(db)
+	if err != nil {
 		return nil, fmt.Errorf("failed to initialize default data: %w", err)
 	}
 
+	// 如果生成了初始管理员密钥，打印提示
+	if initialAdminKey != "" {
+		log.Infof("")
+		log.Infof("⚠️  No admin keys found. Generated initial key: [ %s ]", initialAdminKey)
+		log.Infof("Please save this key to access the dashboard.")
+		log.Infof("Use it as: Authorization: Bearer %s", initialAdminKey)
+		log.Infof("")
+	}
+
 	log.Info("Database initialized successfully")
+
+	// 启动时打印所有管理员密钥信息（用于调试）
+	logAndListAdminKeys(db, log)
+
 	return db, nil
+}
+
+// logAndListAdminKeys 启动时打印所有管理员密钥信息
+func logAndListAdminKeys(db *gorm.DB, log *logrus.Logger) {
+	var adminKeys []models.AdminKey
+	if err := db.Find(&adminKeys).Error; err != nil {
+		log.Errorf("Failed to load admin keys for logging: %v", err)
+		return
+	}
+
+	log.Infof("=== Found %d Admin Key(s) in database ===", len(adminKeys))
+	for i, key := range adminKeys {
+		maskedKey := maskKeyForLog(key.Key)
+		log.Infof("[%d] Admin Key: %s (Name: %s, Length: %d, Created: %s)",
+			i+1, maskedKey, key.Name, len(key.Key), key.CreatedAt.Format("2006-01-02 15:04:05"))
+	}
+	log.Infof("===============================================")
+}
+
+// maskKeyForLog 脱敏显示密钥用于日志
+func maskKeyForLog(key string) string {
+	if len(key) <= 8 {
+		return strings.Repeat("*", len(key))
+	}
+	if strings.HasPrefix(key, "sk-admin-") {
+		// 保留前缀和后4位
+		return key[:9] + strings.Repeat("*", len(key)-13) + key[len(key)-4:]
+	}
+	// 通用格式：前4位 + 中间星号 + 后4位
+	return key[:4] + strings.Repeat("*", len(key)-8) + key[len(key)-4:]
 }
 
 // setupRoutes 设置路由
@@ -135,12 +179,12 @@ func setupRoutes(engine *gin.Engine, router *core.StatelessModelRouter, proxyHan
 	engine.GET("/demo", handleDashboard())
 	engine.GET("/dashboard", handleDashboard())
 
-	// OpenAI兼容的聊天接口 - 单独的日志记录（已在上面添加到 api 组）
-	// engine.POST("/v1/chat/completions", verifyGatewayToken(router), proxyHandler.ProxyRequest)
-
 	// 管理API路由组 - 静默模式，不记录访问日志
 	admin := engine.Group("/admin")
-	admin.Use(AuthMiddleware(router))
+	admin.Use(func(c *gin.Context) {
+		c.Set("db", router.GetDB())
+		AdminAuthMiddleware()(c)
+	})
 	{
 		// 模型组管理
 		admin.GET("/model-groups", handleListModelGroups(router))
@@ -163,6 +207,11 @@ func setupRoutes(engine *gin.Engine, router *core.StatelessModelRouter, proxyHan
 
 		// 配置重载
 		admin.POST("/reload", handleReload(router))
+
+		// Admin Key 管理
+		admin.GET("/admin-keys", handleListAdminKeys())
+		admin.POST("/admin-keys", handleCreateAdminKey())
+		admin.DELETE("/admin-keys/:id", handleDeleteAdminKey())
 	}
 }
 
@@ -273,71 +322,12 @@ func corsMiddleware() gin.HandlerFunc {
 	}
 }
 
-// AuthMiddleware 健壮的认证中间件，支持 Header 和 Query 两种方式
-func AuthMiddleware(router *core.StatelessModelRouter) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// OPTIONS 请求直接放行
-		if c.Request.Method == "OPTIONS" {
-			c.Next()
-			return
-		}
-
-		var token string
-
-		// 1. 优先从 Authorization Header 获取
-		authHeader := c.GetHeader("Authorization")
-		if authHeader != "" {
-			// 支持 "Bearer " 前缀
-			if strings.HasPrefix(authHeader, "Bearer ") {
-				token = authHeader[7:]
-			} else {
-				token = authHeader
-			}
-		}
-
-		// 2. 如果 Header 中没有，从 Query 参数获取
-		if token == "" {
-			token = c.Query("token")
-		}
-
-		// 3. 如果还没有，从 x-api-key Header 获取
-		if token == "" {
-			token = c.GetHeader("x-api-key")
-		}
-
-		// 验证 token
-		if token == "" {
-			c.JSON(401, models.ErrorResponse{
-				Error: models.ErrorDetail{
-					Message: "Missing authentication token. Please provide token in Authorization header (Bearer <token>), x-api-key header, or ?token=<token> query parameter",
-					Type:    "authentication_error",
-				},
-			})
-			c.Abort()
-			return
-		}
-
-		gatewaySettings := router.GetGatewaySettings()
-		if token != gatewaySettings.APIKey {
-			c.JSON(401, models.ErrorResponse{
-				Error: models.ErrorDetail{
-					Message: "Invalid authentication token",
-					Type:    "authentication_error",
-				},
-			})
-			c.Abort()
-			return
-		}
-
-		c.Next()
-	}
-}
-
-// verifyGatewayToken 验证网关Token中间件（保留用于聊天接口）
-func verifyGatewayToken(router *core.StatelessModelRouter) gin.HandlerFunc {
+// verifyAdminToken 验证管理员Token中间件（用于聊天接口）
+func verifyAdminToken(router *core.StatelessModelRouter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
+			logrus.Errorf("[ERROR] Chat Auth Failed | Reason: Missing Authorization header")
 			c.JSON(401, models.ErrorResponse{
 				Error: models.ErrorDetail{
 					Message: "Missing Authorization header",
@@ -348,7 +338,20 @@ func verifyGatewayToken(router *core.StatelessModelRouter) gin.HandlerFunc {
 			return
 		}
 
-		if !checkAuthPrefix(authHeader) {
+		// 【修复】正确的 Bearer 前缀处理：去除空格后检查前缀，然后正确去除前缀
+		trimmedHeader := strings.TrimSpace(authHeader)
+		if strings.HasPrefix(trimmedHeader, "Bearer ") {
+			trimmedHeader = strings.TrimPrefix(trimmedHeader, "Bearer ")
+		} else if strings.HasPrefix(trimmedHeader, "Bearer") {
+			// 支持 "Bearer"（无空格）格式
+			trimmedHeader = strings.TrimPrefix(trimmedHeader, "Bearer")
+		}
+
+		token := strings.TrimSpace(trimmedHeader)
+		logrus.Infof("[DEBUG] Chat Auth Check | Received: \"%s\" | Parsed Token: \"%s\" | Length: %d", authHeader, token, len(token))
+
+		if token == "" {
+			logrus.Errorf("[ERROR] Chat Auth Failed | Reason: Empty token after parsing")
 			c.JSON(401, models.ErrorResponse{
 				Error: models.ErrorDetail{
 					Message: "Invalid Authorization header format",
@@ -359,18 +362,25 @@ func verifyGatewayToken(router *core.StatelessModelRouter) gin.HandlerFunc {
 			return
 		}
 
-		token := authHeader[7:] // 去掉 "Bearer " 前缀
-		gatewaySettings := router.GetGatewaySettings()
-		if token != gatewaySettings.APIKey {
+		// 验证 admin token in database
+		db := router.GetDB()
+		var adminKey models.AdminKey
+		if err := db.Where("key = ?", token).First(&adminKey).Error; err != nil {
+			logrus.Errorf("[ERROR] Chat Auth Failed | Received: \"%s\" | Reason: Admin key not found in database", token)
 			c.JSON(401, models.ErrorResponse{
 				Error: models.ErrorDetail{
-					Message: "Invalid gateway token",
+					Message: "Invalid authentication token",
 					Type:    "authentication_error",
 				},
 			})
 			c.Abort()
 			return
 		}
+
+		logrus.Infof("[INFO] Chat Auth Success | Admin: %s | Key: %s", adminKey.Name, maskKeyForLog(token))
+		// 将管理员信息存储到上下文（可选，用于日志或限流）
+		c.Set("admin_id", adminKey.ID)
+		c.Set("admin_name", adminKey.Name)
 
 		c.Next()
 	}

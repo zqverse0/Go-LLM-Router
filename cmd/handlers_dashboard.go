@@ -1,15 +1,5 @@
 package main
 
-import (
-	"github.com/gin-gonic/gin"
-)
-
-// handleDashboard 处理管理员仪表板（完整版）
-func handleDashboard() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Data(200, "text/html; charset=utf-8", []byte(DashboardHTML))
-	}
-}
 
 // DashboardHTML 完整的仪表板 HTML
 const DashboardHTML = `<!DOCTYPE html>
@@ -19,20 +9,25 @@ const DashboardHTML = `<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM Gateway Admin Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // 在开发环境中抑制Tailwind CDN警告
+        if (typeof window !== 'undefined') {
+            const originalConsoleWarn = console.warn;
+            console.warn = function(...args) {
+                if (args[0] && args[0].includes && args[0].includes('should not be used in production')) {
+                    return; // 忽略Tailwind CDN警告
+                }
+                return originalConsoleWarn.apply(console, args);
+            };
+        }
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         .modal-backdrop {
             backdrop-filter: blur(4px);
             background-color: rgba(0, 0, 0, 0.5);
         }
-        .key-hidden {
-            filter: blur(4px);
-            transition: filter 0.3s ease;
-        }
-        .key-hidden:hover {
-            filter: none;
-        }
-        .fade-in {
+          .fade-in {
             animation: fadeIn 0.3s ease-in;
         }
         @keyframes fadeIn {
@@ -93,6 +88,10 @@ const DashboardHTML = `<!DOCTYPE html>
                     <button onclick="refreshDashboard()" id="refreshBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition flex items-center gap-2">
                         <i class="fas fa-sync-alt"></i>
                         Refresh
+                    </button>
+                    <button onclick="showAdminKeysModal()" class="bg-yellow-500 hover:bg-yellow-600 px-4 py-2 rounded-lg transition flex items-center gap-2">
+                        <i class="fas fa-key"></i>
+                        Admin Keys
                     </button>
                     <button onclick="showAddGroupModal()" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg transition flex items-center gap-2">
                         <i class="fas fa-plus"></i>
@@ -268,6 +267,126 @@ const DashboardHTML = `<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- Admin Keys Modal -->
+    <div id="adminKeysModal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 fade-in">
+            <div class="px-6 py-4 border-b flex justify-between items-center">
+                <h3 class="text-xl font-bold flex items-center gap-2">
+                    <i class="fas fa-key text-yellow-600"></i>
+                    Admin Keys Management
+                </h3>
+                <button onclick="closeModal('adminKeysModal')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="p-6">
+                <div class="mb-6 flex justify-between items-center">
+                    <p class="text-gray-600">Manage your admin API keys for accessing the dashboard</p>
+                    <button onclick="showAddAdminKeyModal()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
+                        <i class="fas fa-plus"></i>
+                        Generate New Key
+                    </button>
+                </div>
+
+                <!-- Admin Keys Table -->
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Key Preview</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminKeysList" class="bg-white divide-y divide-gray-200">
+                            <!-- Admin keys will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="noAdminKeys" class="hidden text-center py-8 text-gray-500">
+                    <i class="fas fa-key text-4xl mb-4"></i>
+                    <p>No admin keys found.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Admin Key Modal -->
+    <div id="addAdminKeyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 fade-in">
+            <div class="px-6 py-4 border-b">
+                <h3 class="text-xl font-bold flex items-center gap-2">
+                    <i class="fas fa-key text-green-600"></i>
+                    Generate New Admin Key
+                </h3>
+            </div>
+            <form id="addAdminKeyForm" class="p-6">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Key Name</label>
+                    <input type="text" name="name" required
+                           class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                           placeholder="e.g., MacBook Pro, Mobile Device">
+                </div>
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                    <p class="text-sm text-blue-700">
+                        <i class="fas fa-info-circle mr-2"></i>
+                        A new admin key will be generated. Please save it securely as it will only be shown once.
+                    </p>
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button type="button" onclick="closeModal('addAdminKeyModal')"
+                            class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition flex items-center gap-2">
+                        <i class="fas fa-times"></i>
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition flex items-center gap-2">
+                        <i class="fas fa-key"></i>
+                        Create
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- New Admin Key Result Modal -->
+    <div id="newAdminKeyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 fade-in">
+            <div class="px-6 py-4 border-b">
+                <h3 class="text-xl font-bold flex items-center gap-2">
+                    <i class="fas fa-check-circle text-green-600"></i>
+                    Admin Key Generated Successfully
+                </h3>
+            </div>
+            <div class="p-6">
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p class="text-sm text-yellow-700 mb-3 font-medium">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        Please save this key now. It won't be shown again!
+                    </p>
+                    <div class="flex items-center gap-2">
+                        <input type="text" id="newAdminKeyValue" readonly
+                               class="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-lg font-mono text-sm"
+                               value="">
+                        <button onclick="copyToClipboard(document.getElementById('newAdminKeyValue').value, this)"
+                                class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg transition">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="mt-4 flex justify-end">
+                    <button onclick="closeModal('newAdminKeyModal'); loadAdminKeys();"
+                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        I've Saved It
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Edit Model Modal -->
     <div id="editModelModal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 fade-in">
@@ -320,64 +439,142 @@ const DashboardHTML = `<!DOCTYPE html>
         let adminKey = localStorage.getItem('admin_key');
         let dashboardData = [];
 
+        // Modal 控制函数
+        function showModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.style.display = 'flex';
+            }
+        }
+
+        
         // Initialize dashboard
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('Dashboard initializing...');
-
             if (adminKey) {
-                console.log('Found existing admin key in localStorage');
                 document.getElementById('loginModal').classList.add('hidden');
                 loadDashboard();
             } else {
-                console.log('No admin key found, showing login modal');
                 document.getElementById('loginModal').classList.remove('hidden');
             }
 
-            // Setup form listeners
+            // 【关键修复】实施���件委托 - 替代直接事件绑定
+            setupEventDelegation();
+
+            // 静态表单事件保留（这些表单不会被重新创建）
             document.getElementById('loginForm').addEventListener('submit', handleLogin);
             document.getElementById('addGroupForm').addEventListener('submit', handleAddGroup);
             document.getElementById('addModelForm').addEventListener('submit', handleAddModel);
             document.getElementById('addKeyForm').addEventListener('submit', handleAddKey);
             document.getElementById('editModelForm').addEventListener('submit', handleEditModel);
+            document.getElementById('addAdminKeyForm').addEventListener('submit', createAdminKey);
         });
 
         // API helper function with debug logging
         async function fetchAPI(url, options = {}) {
-            const defaultOptions = {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + adminKey
+            // 从 localStorage 获取最新的 admin key
+            const token = localStorage.getItem('admin_key');
+
+            // 1. 定义基础 Headers (使用Headers对象以避免编码问题)
+            const headers = new Headers();
+            headers.append('Content-Type', 'application/json');
+
+            // 2. 强制注入 Auth Token (如果存在) - 添加防御性代码
+            if (token && token.trim()) {
+                const cleanToken = token.trim();
+
+                // 检查token是否包含非ISO-8859-1字符
+                try {
+                    // 测试是否可以正常编码
+                    encodeURIComponent(cleanToken);
+
+                    // 进一步检查：确保只包含安全字符
+                    if (!/^[a-zA-Z0-9\-_]+$/.test(cleanToken)) {
+                        throw new Error('Token contains invalid characters');
+                    }
+
+                    headers.append('Authorization', 'Bearer ' + cleanToken);
+                } catch (encodingError) {
+                    // 如果编码失败，提供友好的错误提示
+                    console.error('Token encoding error:', encodingError);
+                    throw new Error('API key contains invalid characters. Only letters, numbers, hyphens, and underscores are allowed.');
                 }
+            }
+
+            // 3. 构造请求选项
+            const finalOptions = {
+                method: options.method || 'GET',
+                headers: headers,
             };
 
-            const finalOptions = { ...defaultOptions, ...options };
-
-            // Debug logging
-            console.log('=== API Request Debug ===');
-            console.log('URL:', url);
-            console.log('Method:', finalOptions.method || 'GET');
-            console.log('Headers:', finalOptions.headers);
-            console.log('Body:', finalOptions.body);
-            console.log('========================');
+            // 4. 如果有body，添加body
+            if (options.body) {
+                finalOptions.body = options.body;
+            }
 
             const response = await fetch(url, finalOptions);
 
-            console.log('=== API Response Debug ===');
-            console.log('Status:', response.status);
-            console.log('Status Text:', response.statusText);
+            const data = await response.json();
 
-            if (response.status === 401) {
-                console.log('401 Unauthorized - showing error instead of immediate logout');
-                // 不要立即刷新页面，而是显示错误消息
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData?.error?.message || 'API Key 无效或过期，请重新输入');
+            // 如果响应状态码不是 2xx，抛出错误包含后端返回的消息
+            if (!response.ok) {
+                const errorMessage = data?.error?.message || data?.message || "Request failed (" + response.status + ")";
+                throw new Error(errorMessage);
             }
 
-            const data = await response.json();
-            console.log('Response Data:', data);
-            console.log('==========================');
-
             return { response, data };
+        }
+
+        // 【关键修复】事件委托函数 - 使用 data 属性替代 onclick
+        function setupEventDelegation() {
+            // 委托给document（永远不会被替换的根元素）
+            document.addEventListener('click', function(e) {
+                // 查找点击的目标元素
+                const target = e.target.closest('[data-action]');
+                if (!target) return;
+
+                e.preventDefault();
+                const action = target.getAttribute('data-action');
+                const id = target.getAttribute('data-id');
+                const groupId = target.getAttribute('data-group-id');
+                const key = target.getAttribute('data-key');
+
+                switch (action) {
+                    case 'showAddModelModal':
+                        showAddModelModal(groupId);
+                        break;
+                    case 'deleteGroup':
+                        deleteGroup(groupId);
+                        break;
+                    case 'editModel':
+                        editModel(
+                            id,
+                            target.getAttribute('data-provider'),
+                            target.getAttribute('data-url'),
+                            target.getAttribute('data-model'),
+                            parseInt(target.getAttribute('data-timeout'))
+                        );
+                        break;
+                    case 'deleteModel':
+                        deleteModel(id);
+                        break;
+                    case 'showAddKeyModal':
+                        showAddKeyModal(id);
+                        break;
+                    case 'copyKey':
+                        copyToClipboard(key, target);
+                        break;
+                    case 'deleteKey':
+                        deleteKey(id);
+                        break;
+                    case 'copyAdminKey':
+                        copyToClipboard(key, target);
+                        break;
+                    case 'deleteAdminKey':
+                        deleteAdminKey(id);
+                        break;
+                }
+            });
         }
 
         // Authentication functions
@@ -392,8 +589,23 @@ const DashboardHTML = `<!DOCTYPE html>
                 return;
             }
 
-            adminKey = key;
-            localStorage.setItem('admin_key', key);
+            // 强制清洗输入：只允许字母、数字、连字符、下划线
+            const cleanKey = key.replace(/[^a-zA-Z0-9\-_]/g, '');
+
+            // 检查清洗后是否有效
+            if (cleanKey.length < 10) {
+                showToast('Invalid API key format. Only letters, numbers, hyphens, and underscores are allowed.', 'error');
+                return;
+            }
+
+            // 如果清洗后的key与原key不同，说明有非法字符
+            if (cleanKey !== key) {
+                showToast('API key contains invalid characters and has been cleaned.', 'warning');
+                document.getElementById('adminKeyInput').value = cleanKey; // 更新输入框显示
+            }
+
+            adminKey = cleanKey;
+            localStorage.setItem('admin_key', cleanKey);
 
             loginBtn.disabled = true;
             loginText.innerHTML = '<span class="loading"></span> Authenticating...';
@@ -402,7 +614,6 @@ const DashboardHTML = `<!DOCTYPE html>
                 const result = await fetchAPI('/admin/model-groups');
 
                 if (result.response.ok) {
-                    console.log('Authentication successful');
                     document.getElementById('loginModal').classList.add('hidden');
                     loadDashboard();
                 } else {
@@ -425,7 +636,6 @@ const DashboardHTML = `<!DOCTYPE html>
         }
 
         function logout() {
-            console.log('Logging out...');
             localStorage.removeItem('admin_key');
             adminKey = null;
             location.reload();
@@ -441,7 +651,6 @@ const DashboardHTML = `<!DOCTYPE html>
                 const result = await fetchAPI('/admin/model-groups');
                 if (result && result.response.ok) {
                     dashboardData = result.data.data || [];
-                    console.log('Dashboard data loaded:', dashboardData.length, 'groups');
                     await loadDetailedData();
                     renderDashboard();
                     updateStats();
@@ -465,15 +674,12 @@ const DashboardHTML = `<!DOCTYPE html>
 
         // Load detailed data for each group
         async function loadDetailedData() {
-            console.log('Loading detailed data for', dashboardData.length, 'groups');
-
             for (let group of dashboardData) {
                 try {
                     // 【关键修改】使用 group_id 而不是 id，并添加 URL 编码
                     const result = await fetchAPI('/admin/model-groups/' + encodeURIComponent(group.group_id));
                     if (result && result.response.ok) {
                         group.details = result.data.data;
-                        console.log('Loaded details for group:', group.group_id);
                     }
                 } catch (error) {
                     console.error('Failed to load details for group', group.group_id, error);
@@ -495,8 +701,6 @@ const DashboardHTML = `<!DOCTYPE html>
                 const groupCard = createGroupCard(group);
                 container.appendChild(groupCard);
             });
-
-            console.log('Rendered', dashboardData.length, 'group cards');
         }
 
         // Create group card element
@@ -510,7 +714,7 @@ const DashboardHTML = `<!DOCTYPE html>
 
             // 【关键修改】使用可选链和正确的检查
             const modelsHtml = group.details?.models && group.details.models.length > 0
-                ? group.details.models.map((model, index) => createModelRow(model, index, group.id)).join('')
+                ? group.details.models.map((model, index) => createModelRow(model, index, group.group_id)).join('')
                 : '<div class="text-center py-4 text-gray-500">No models found</div>';
 
             card.innerHTML =
@@ -520,14 +724,14 @@ const DashboardHTML = `<!DOCTYPE html>
                             '<h2 class="text-xl font-bold text-gray-800">' + (group.group_id || 'Unknown') + '</h2>' +
                             '<div class="flex items-center gap-3 mt-2">' +
                                 strategyBadge +
-                                '<span class="text-sm text-gray-500">' + (group.models || 0) + ' models</span>' +
+                                '<span class="text-sm text-gray-500">' + (group.model_count || 0) + ' models</span>' +
                             '</div>' +
                         '</div>' +
                         '<div class="flex items-center gap-2">' +
-                            '<button onclick="showAddModelModal(' + group.id + ')" class="text-blue-600 hover:text-blue-800 p-2" title="Add Model">' +
+                            '<button data-action="showAddModelModal" data-group-id="' + (group.group_id || '') + '" class="text-blue-600 hover:text-blue-800 p-2" title="Add Model">' +
                                 '<i class="fas fa-plus"></i>' +
                             '</button>' +
-                            '<button onclick="deleteGroup(' + group.id + ')" class="text-red-600 hover:text-red-800 p-2" title="Delete Group">' +
+                            '<button data-action="deleteGroup" data-group-id="' + (group.group_id || '') + '" class="text-red-600 hover:text-red-800 p-2" title="Delete Group">' +
                                 '<i class="fas fa-trash"></i>' +
                             '</button>' +
                         '</div>' +
@@ -544,12 +748,19 @@ const DashboardHTML = `<!DOCTYPE html>
 
         // Create model row element
         function createModelRow(model, index, groupId) {
-            const keysHtml = model.keys && model.keys.length > 0
-                ? model.keys.map(key => createKeyElement(key)).join('')
+            // 修复：使用正确的字段名 api_keys 而不是 keys
+            const keysHtml = model.api_keys && model.api_keys.length > 0
+                ? model.api_keys.map(key => createKeyElement(key)).join('')
                 : '<div class="text-sm text-gray-500">No API keys</div>';
 
             // 【关键修改】使用循环索引 + 1 作为路由索引
             const routingIndex = index + 1;
+
+            // 修复：计算实际的 keys 数量而不是使用不存在的 keys_count
+            const keysCount = model.api_keys ? model.api_keys.length : 0;
+
+          // 确保ID作为字符串处理，避免精度丢失
+            const modelIdStr = model.ID ? model.ID.toString() : '0';
 
             return '<div class="border rounded-lg p-4 hover:bg-gray-50 transition">' +
                 '<div class="flex items-center justify-between mb-3">' +
@@ -562,19 +773,19 @@ const DashboardHTML = `<!DOCTYPE html>
                         '</div>' +
                     '</div>' +
                     '<div class="flex items-center gap-2">' +
-                        '<button onclick="editModel(' + model.id + ', \'' + (model.provider_name || '').replace(/'/g, "\\'") + '\', \'' + (model.upstream_url || '').replace(/'/g, "\\'") + '\', \'' + (model.upstream_model || '').replace(/'/g, "\\'") + '\', ' + (model.timeout || 30) + ')" class="text-blue-600 hover:text-blue-800 p-2" title="Edit Model">' +
+                        '<button data-action="editModel" data-id="' + modelIdStr + '" data-provider="' + (model.provider_name || '').replace(/'/g, "\\'") + '" data-url="' + (model.upstream_url || '').replace(/'/g, "\\'") + '" data-model="' + (model.upstream_model || '').replace(/'/g, "\\'") + '" data-timeout="' + (model.timeout || 30) + '" class="text-blue-600 hover:text-blue-800 p-2" title="Edit Model">' +
                             '<i class="fas fa-edit"></i>' +
                         '</button>' +
-                        '<button onclick="deleteModel(' + model.id + ')" class="text-red-600 hover:text-red-800 p-2" title="Delete Model">' +
+                        '<button data-action="deleteModel" data-id="' + modelIdStr + '" class="text-red-600 hover:text-red-800 p-2" title="Delete Model">' +
                             '<i class="fas fa-trash"></i>' +
                         '</button>' +
                     '</div>' +
                 '</div>' +
                 '<div class="mt-3">' +
-                    '<div class="text-xs text-gray-500 mb-1">API Keys (' + (model.keys_count || 0) + ')</div>' +
+                    '<div class="text-xs text-gray-500 mb-1">API Keys (' + keysCount + ')</div>' +
                     '<div class="flex flex-wrap gap-2">' +
                         keysHtml +
-                        '<button onclick="showAddKeyModal(' + model.id + ')" class="px-2 py-1 bg-blue-100 text-blue-600 rounded text-xs hover:bg-blue-200" title="Add Key">' +
+                        '<button data-action="showAddKeyModal" data-id="' + modelIdStr + '" class="px-2 py-1 bg-blue-100 text-blue-600 rounded text-xs hover:bg-blue-200" title="Add Key">' +
                             '<i class="fas fa-plus"></i>' +
                         '</button>' +
                     '</div>' +
@@ -582,13 +793,23 @@ const DashboardHTML = `<!DOCTYPE html>
             '</div>';
         }
 
+        // API Key脱敏显示函数
+        function maskApiKey(key) {
+            if (!key || key.length <= 8) {
+                return key;
+            }
+            return key.substring(0, 4) + '...' + key.substring(key.length - 4);
+        }
+
         // Create key element with copy and delete buttons
         function createKeyElement(key) {
+            const maskedKey = maskApiKey(key.key_value);
+            const keyIdStr = key.ID ? key.ID.toString() : '0';
             return '<div class="relative group">' +
-                '<span class="px-2 py-1 bg-gray-100 rounded text-xs font-mono key-hidden cursor-pointer" onclick="copyToClipboard(\'' + (key.full_key || key.key_value || '') + '\', this)">' +
-                    (key.key_value || '') +
+                '<span data-action="copyKey" data-key="' + (key.key_value || '') + '" class="px-2 py-1 bg-gray-100 rounded text-xs font-mono cursor-pointer hover:bg-gray-200 transition">' +
+                    maskedKey +
                 '</span>' +
-                '<button onclick="deleteKey(' + key.id + ')" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs hidden group-hover:block" title="Delete Key">' +
+                '<button data-action="deleteKey" data-id="' + keyIdStr + '" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs hidden group-hover:block" title="Delete Key">' +
                     '<i class="fas fa-times"></i>' +
                 '</button>' +
             '</div>';
@@ -603,10 +824,13 @@ const DashboardHTML = `<!DOCTYPE html>
 
             if (dashboardData) {
                 dashboardData.forEach(function(group) {
-                    totalModels += group.models || 0;
+                    // 修复：使用正确的字段名 model_count
+                    totalModels += group.model_count || 0;
                     if (group.details?.models) {
                         group.details.models.forEach(function(model) {
-                            totalKeys += model.keys_count || 0;
+                            // 修复：使用正确的字段名
+                            const keysCount = model.api_keys ? model.api_keys.length : 0;
+                            totalKeys += keysCount;
                             totalRequests += model.total_requests || 0;
                         });
                     }
@@ -626,24 +850,65 @@ const DashboardHTML = `<!DOCTYPE html>
 
         // Modal functions
         function showAddGroupModal() {
-            document.getElementById('addGroupModal').classList.remove('hidden');
+            showModal('addGroupModal');
         }
 
         function showAddModelModal(groupId) {
+            // 添加 ID 验证保护
+            if (!groupId || groupId === 'undefined' || groupId === 'null') {
+                showToast('Invalid group ID', 'error');
+                return;
+            }
             document.getElementById('addModelGroupId').value = groupId;
-            document.getElementById('addModelModal').classList.remove('hidden');
+            showModal('addModelModal');
         }
 
         function showAddKeyModal(modelId) {
+            // 添加 ID 验证保护
+            if (!modelId || modelId === 'undefined' || modelId === 'null') {
+                showToast('Invalid model ID', 'error');
+                return;
+            }
             document.getElementById('addKeyModelId').value = modelId;
-            document.getElementById('addKeyModal').classList.remove('hidden');
+            showModal('addKeyModal');
         }
 
         function closeModal(modalId) {
-            document.getElementById(modalId).classList.add('hidden');
-            // Reset form
-            const form = document.querySelector('#' + modalId + ' form');
-            if (form) form.reset();
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.style.display = 'none';
+
+                // 【关键修复】确保移除所有可能导致遮挡的类
+                modal.classList.remove('flex', 'block');
+
+                // Reset form if it exists
+                const form = modal.querySelector('form');
+                if (form) form.reset();
+            }
+        }
+
+        // 【新增】强制关闭所有模态框的函数 - 解决模态框状态锁定问题
+        function forceCloseAllModals() {
+            const modals = document.querySelectorAll('[id$="Modal"]');
+            modals.forEach(modal => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex', 'block');
+                modal.style.display = 'none';
+            });
+        }
+
+        // 【增强】showModal函数，确保模态框正确显示
+        function showModal(modalId) {
+            // 先强制关闭所有模态框，避免叠加
+            forceCloseAllModals();
+
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                modal.style.display = 'flex';
+            }
         }
 
         // Form handlers
@@ -656,18 +921,14 @@ const DashboardHTML = `<!DOCTYPE html>
             };
 
             try {
-                const result = await fetchAPI('/admin/model-groups', {
+                await fetchAPI('/admin/model-groups', {
                     method: 'POST',
                     body: JSON.stringify(data)
                 });
 
-                if (result && result.response.ok) {
-                    showToast('Group added successfully', 'success');
-                    closeModal('addGroupModal');
-                    loadDashboard();
-                } else {
-                    showToast(result?.data?.error?.message || 'Failed to add group', 'error');
-                }
+                showToast('Group added successfully', 'success');
+                closeModal('addGroupModal');
+                loadDashboard();
             } catch (error) {
                 showToast(error.message || 'Failed to add group', 'error');
             }
@@ -688,19 +949,16 @@ const DashboardHTML = `<!DOCTYPE html>
             };
 
             const groupId = formData.get('group_id');
+
             try {
-                const result = await fetchAPI('/admin/model-groups/' + groupId + '/models', {
+                await fetchAPI('/admin/model-groups/' + groupId + '/models', {
                     method: 'POST',
                     body: JSON.stringify(data)
                 });
 
-                if (result && result.response.ok) {
-                    showToast('Model added successfully', 'success');
-                    closeModal('addModelModal');
-                    loadDashboard();
-                } else {
-                    showToast(result?.data?.error?.message || 'Failed to add model', 'error');
-                }
+                showToast('Model added successfully', 'success');
+                closeModal('addModelModal');
+                loadDashboard();
             } catch (error) {
                 showToast(error.message || 'Failed to add model', 'error');
             }
@@ -715,18 +973,14 @@ const DashboardHTML = `<!DOCTYPE html>
 
             const modelId = formData.get('model_id');
             try {
-                const result = await fetchAPI('/admin/models/' + modelId + '/keys', {
+                await fetchAPI('/admin/models/' + modelId + '/keys', {
                     method: 'POST',
                     body: JSON.stringify(data)
                 });
 
-                if (result && result.response.ok) {
-                    showToast('API key added successfully', 'success');
-                    closeModal('addKeyModal');
-                    loadDashboard();
-                } else {
-                    showToast(result?.data?.error?.message || 'Failed to add API key', 'error');
-                }
+                showToast('API key added successfully', 'success');
+                closeModal('addKeyModal');
+                loadDashboard();
             } catch (error) {
                 showToast(error.message || 'Failed to add API key', 'error');
             }
@@ -734,12 +988,17 @@ const DashboardHTML = `<!DOCTYPE html>
 
         // Edit Model functions
         function editModel(id, providerName, upstreamUrl, upstreamModel, timeout) {
+            // 添加 ID 验证保护
+            if (!id || id === 'undefined' || id === 'null') {
+                showToast('Invalid model ID', 'error');
+                return;
+            }
             document.getElementById('editModelId').value = id;
             document.getElementById('editProviderName').value = providerName;
             document.getElementById('editUpstreamUrl').value = upstreamUrl;
             document.getElementById('editUpstreamModel').value = upstreamModel;
             document.getElementById('editTimeout').value = timeout;
-            document.getElementById('editModelModal').classList.remove('hidden');
+            showModal('editModelModal');
         }
 
         async function handleEditModel(e) {
@@ -755,18 +1014,14 @@ const DashboardHTML = `<!DOCTYPE html>
             };
 
             try {
-                const result = await fetchAPI('/admin/models/' + modelId, {
+                await fetchAPI('/admin/models/' + modelId, {
                     method: 'PUT',
                     body: JSON.stringify(data)
                 });
 
-                if (result && result.response.ok) {
-                    showToast('Model updated successfully', 'success');
-                    closeModal('editModelModal');
-                    loadDashboard();
-                } else {
-                    showToast(result?.data?.error?.message || 'Failed to update model', 'error');
-                }
+                showToast('Model updated successfully', 'success');
+                closeModal('editModelModal');
+                loadDashboard();
             } catch (error) {
                 showToast(error.message || 'Failed to update model', 'error');
             }
@@ -774,57 +1029,60 @@ const DashboardHTML = `<!DOCTYPE html>
 
         // Delete functions
         async function deleteGroup(groupId) {
+            // 添加 ID 验证保护
+            if (!groupId || groupId === 'undefined' || groupId === 'null') {
+                showToast('Invalid group ID', 'error');
+                return;
+            }
             if (!confirm('Are you sure you want to delete this group and all its models?')) return;
 
             try {
-                const result = await fetchAPI('/admin/model-groups/' + groupId, {
+                await fetchAPI('/admin/model-groups/' + groupId, {
                     method: 'DELETE'
                 });
 
-                if (result && result.response.ok) {
-                    showToast('Group deleted successfully', 'success');
-                    loadDashboard();
-                } else {
-                    showToast(result?.data?.error?.message || 'Failed to delete group', 'error');
-                }
+                showToast('Group deleted successfully', 'success');
+                loadDashboard();
             } catch (error) {
                 showToast(error.message || 'Failed to delete group', 'error');
             }
         }
 
         async function deleteModel(modelId) {
+            // 添加 ID 验证保护
+            if (!modelId || modelId === 'undefined' || modelId === 'null') {
+                showToast('Invalid model ID', 'error');
+                return;
+            }
             if (!confirm('Are you sure you want to delete this model?')) return;
 
             try {
-                const result = await fetchAPI('/admin/models/' + modelId, {
+                await fetchAPI('/admin/models/' + modelId, {
                     method: 'DELETE'
                 });
 
-                if (result && result.response.ok) {
-                    showToast('Model deleted successfully', 'success');
-                    loadDashboard();
-                } else {
-                    showToast(result?.data?.error?.message || 'Failed to delete model', 'error');
-                }
+                showToast('Model deleted successfully', 'success');
+                loadDashboard();
             } catch (error) {
                 showToast(error.message || 'Failed to delete model', 'error');
             }
         }
 
         async function deleteKey(keyId) {
+            // 添加 ID 验证保护
+            if (!keyId || keyId === 'undefined' || keyId === 'null') {
+                showToast('Invalid key ID', 'error');
+                return;
+            }
             if (!confirm('Are you sure you want to delete this API key?')) return;
 
             try {
-                const result = await fetchAPI('/admin/keys/' + keyId, {
+                await fetchAPI('/admin/keys/' + keyId, {
                     method: 'DELETE'
                 });
 
-                if (result && result.response.ok) {
-                    showToast('API key deleted successfully', 'success');
-                    loadDashboard();
-                } else {
-                    showToast(result?.data?.error?.message || 'Failed to delete API key', 'error');
-                }
+                showToast('API key deleted successfully', 'success');
+                loadDashboard();
             } catch (error) {
                 showToast(error.message || 'Failed to delete API key', 'error');
             }
@@ -864,14 +1122,183 @@ const DashboardHTML = `<!DOCTYPE html>
             document.body.removeChild(textarea);
         }
 
+        // 【绝对稳】专门处理Admin Key复制的函数
+        function handleCopyKey(button) {
+            // 确保获取到按钮元素
+            if (!button) {
+                console.error('No button provided to handleCopyKey');
+                showToast('Copy failed: invalid button', 'error');
+                return;
+            }
+
+            // 多重尝试获取密钥
+            let keyValue = null;
+
+            // 方法1: 从data-full-key属性获取
+            keyValue = button.getAttribute('data-full-key');
+
+            // 方法2: 如果方法1失败，尝试从data-key属性获取
+            if (!keyValue) {
+                keyValue = button.getAttribute('data-key');
+            }
+
+            // 方法3: 如果都失败了，获取dataset
+            if (!keyValue && button.dataset) {
+                keyValue = button.dataset.fullKey || button.dataset.key;
+            }
+
+            // 详细调试信息
+            console.log('handleCopyKey - button:', button);
+            console.log('handleCopyKey - keyValue:', keyValue);
+            console.log('handleCopyKey - keyValue length:', keyValue ? keyValue.length : 'null');
+            console.log('handleCopyKey - keyValue contains "...":', keyValue ? keyValue.includes('...') : 'null');
+
+            // 验证获取到的值
+            if (!keyValue || keyValue === 'undefined' || keyValue === 'null' || keyValue.trim() === '') {
+                console.error('No valid key found in button dataset', button);
+                console.log('Available attributes:', Array.from(button.attributes).map(attr => attr.name + '="' + attr.value + '"'));
+                showToast('Copy failed: no key available', 'error');
+                return;
+            }
+
+            // 调用现有的复制函数
+            copyToClipboard(keyValue.trim(), button);
+        }
+
         function showCopySuccess(element) {
-            const originalText = element.textContent;
-            element.textContent = 'Copied!';
-            element.classList.add('text-green-600');
-            setTimeout(() => {
-                element.textContent = originalText;
-                element.classList.remove('text-green-600');
-            }, 2000);
+            const isIcon = element.tagName === 'I' || element.querySelector('i');
+
+            if (isIcon) {
+                // 处理图标按钮
+                const icon = element.tagName === 'I' ? element : element.querySelector('i');
+                const originalClass = icon.className;
+                icon.className = 'fas fa-check text-green-600';
+                setTimeout(() => {
+                    icon.className = originalClass;
+                }, 2000);
+            } else {
+                // 处理文本元素
+                const originalText = element.textContent;
+                element.textContent = 'Copied!';
+                element.classList.add('text-green-600');
+                setTimeout(() => {
+                    element.textContent = originalText;
+                    element.classList.remove('text-green-600');
+                }, 2000);
+            }
+        }
+
+        // Admin Keys Management
+        function showAdminKeysModal() {
+            loadAdminKeys(); // 先加载数据
+            showModal('adminKeysModal'); // 再显示弹窗
+        }
+
+        async function loadAdminKeys() {
+            try {
+                const result = await fetchAPI('/admin/admin-keys');
+
+                if (result && result.response.ok) {
+                    const adminKeys = result.data.data;
+                    const tableBody = document.getElementById('adminKeysList');
+                    const noKeysMsg = document.getElementById('noAdminKeys');
+
+                    if (adminKeys.length === 0) {
+                        tableBody.innerHTML = '';
+                        noKeysMsg.classList.remove('hidden');
+                    } else {
+                        noKeysMsg.classList.add('hidden');
+                        // 【解除限制】Admin Key表格渲染 - 所有密钥都可完整复制
+                        let rows = adminKeys.map((key, index) => {
+                            // 显示用的脱敏密钥
+                            const displayKey = key.key_preview || maskApiKey(key.key || 'No Key');
+                            const keyIdStr = key.id ? key.id.toString() : '0';
+                            const rowNumber = index + 1;
+
+                            // 【关键修改】强制使用后端返回的完整密钥
+                            const fullKey = key.key || 'No Key Available';
+                            const buttonTitle = 'Copy Full Key';
+
+                            console.log('Rendering Admin Key - ID:', key.id, 'Full Key Length:', fullKey.length);
+
+                            // 安全地转义完整密钥用于HTML属性
+                            const escapedFullKey = fullKey.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+                            return '<tr>' +
+                                '<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">' + rowNumber + '</td>' +
+                                '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' + key.name + '</td>' +
+                                '<td class="px-6 py-4 whitespace-nowrap text-sm font-mono">' +
+                                    '<span class="inline-block max-w-xs truncate" title="' + fullKey + '">' + displayKey + '</span>' +
+                                '</td>' +
+                                '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' + new Date(key.created_at * 1000).toLocaleDateString() + '</td>' +
+                                '<td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">' +
+                                    '<button onclick="handleCopyKey(this)" data-full-key="' + escapedFullKey + '" class="text-blue-600 hover:text-blue-900 transition" title="' + buttonTitle + '">' +
+                                        '<i class="fas fa-copy"></i>' +
+                                    '</button>' +
+                                    '<button data-action="deleteAdminKey" data-id="' + keyIdStr + '" class="text-red-600 hover:text-red-900 transition" title="Delete">' +
+                                        '<i class="fas fa-trash"></i>' +
+                                    '</button>' +
+                                '</td>' +
+                            '</tr>';
+                        }).join('');
+                        tableBody.innerHTML = rows;
+                    }
+                } else {
+                    showToast(result?.data?.error?.message || 'Failed to load admin keys', 'error');
+                }
+            } catch (error) {
+                showToast(error.message || 'Failed to load admin keys', 'error');
+            }
+        }
+
+        function showAddAdminKeyModal() {
+            showModal('addAdminKeyModal');
+        }
+
+        async function createAdminKey(event) {
+            event.preventDefault();
+
+            const formData = new FormData(event.target);
+            const name = formData.get('name');
+
+            try {
+                // 直接传 URL, Method, Body。不要传 Headers。
+                const result = await fetchAPI('/admin/admin-keys', {
+                    method: 'POST',
+                    body: JSON.stringify({ name })
+                });
+
+                if (result && result.response.ok) {
+                    const newKey = result.data.data;
+                    document.getElementById('newAdminKeyValue').value = newKey.key;
+                    closeModal('addAdminKeyModal');
+                    showModal('newAdminKeyModal');
+                    showToast('Admin key created successfully', 'success');
+                } else {
+                    showToast(result?.data?.message || result?.data?.error?.message || 'Failed to create admin key', 'error');
+                }
+            } catch (error) {
+                showToast(error.message || 'Failed to create admin key', 'error');
+            }
+        }
+
+        async function deleteAdminKey(keyId) {
+            if (!confirm('Are you sure you want to delete this admin key? This action cannot be undone.')) return;
+
+            try {
+                const result = await fetchAPI('/admin/admin-keys/' + keyId, {
+                    method: 'DELETE'
+                });
+
+                if (result && result.response.ok) {
+                    showToast('Admin key deleted successfully', 'success');
+                    loadAdminKeys();
+                } else {
+                    showToast(result?.data?.message || result?.data?.error?.message || 'Failed to delete admin key', 'error');
+                }
+            } catch (error) {
+                showToast(error.message || 'Failed to delete admin key', 'error');
+            }
         }
 
         // Toast notification

@@ -464,28 +464,9 @@ func getHTTPStatusText(statusCode int) string {
 	}
 }
 
-// normalizeURL 智能规范化 URL
+// normalizeURL 仅做基本清理，不进行自动拼接，完全信任用户配置的完整 URL
 func (h *ProxyHandlerStateless) normalizeURL(originalURL string) string {
-	// 去除末尾的斜杠
-	normalized := strings.TrimSuffix(originalURL, "/")
-
-	// 规则 1：如果已经以 /chat/completions 结尾，保持不变
-	if strings.HasSuffix(normalized, "/chat/completions") {
-		
-		return normalized
-	}
-
-	// 规则 2：如果以 /v1 结尾，追加 /chat/completions
-	if strings.HasSuffix(normalized, "/v1") {
-		result := normalized + "/chat/completions"
-		
-		return result
-	}
-
-	// 规则 3：其他情况，追加 /v1/chat/completions (OpenAI 标准)
-	result := normalized + "/v1/chat/completions"
-	
-	return result
+	return strings.TrimSpace(originalURL)
 }
 
 // handleStreamingRequestStateless 处理流式请求

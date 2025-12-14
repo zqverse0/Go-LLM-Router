@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"llm-gateway/core"
 	"llm-gateway/models"
 	"strconv"
@@ -10,6 +11,56 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+// parseAndValidateID 解析并验证字符串ID为uint
+func parseAndValidateID(idStr string, paramName string) (uint, error) {
+	if idStr == "" {
+		return 0, fmt.Errorf("missing %s parameter", paramName)
+	}
+
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: must be a number", paramName)
+	}
+
+	return uint(id), nil
+}
+
+// withTransaction 执���事务处理，自动处理错误回滚
+func withTransaction(db *gorm.DB, fn func(*gorm.DB) error) error {
+	tx := db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			panic(r) // re-panic after rollback
+		}
+	}()
+
+	if err := fn(tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit().Error
+}
+
+// safeMaskKey 安全地脱敏密钥，避免切片越界
+func safeMaskKey(key string) string {
+	if key == "" {
+		return "***"
+	}
+
+	if len(key) <= 8 {
+		// 对于短密钥，只显示前2位
+		if len(key) <= 4 {
+			return key[:1] + "***"
+		}
+		return key[:2] + "***" + key[len(key)-2:]
+	}
+
+	// 显示前8位和后4位
+	return key[:8] + "..." + key[len(key)-4:]
+}
 
 // handleRoot 处理根路径请求
 func handleRoot(router *core.StatelessModelRouter) gin.HandlerFunc {
@@ -41,6 +92,13 @@ func handleHealth(router *core.StatelessModelRouter) gin.HandlerFunc {
 	}
 }
 
+// handleDashboard 处理管理员仪表板（完整版）
+func handleDashboard() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Data(200, "text/html; charset=utf-8", []byte(DashboardHTML))
+	}
+}
+
 // handleListModelGroups 处理获取模型组列表
 func handleListModelGroups(router *core.StatelessModelRouter) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -51,66 +109,109 @@ func handleListModelGroups(router *core.StatelessModelRouter) gin.HandlerFunc {
 			return
 		}
 
-		// 获取每个组的模型数量
-		result := make([]gin.H, 0, len(dbGroups))
+		// 查询每个组的模型数量
+		type ModelGroupInfo struct {
+			ID          uint                   `json:"id"`
+			GroupID     string                 `json:"group_id"`
+			Strategy    string                 `json:"strategy"`
+			ModelCount  int                    `json:"model_count"`
+			Models      []models.ModelConfig   `json:"models,omitempty"`
+		}
+
+		var groupsInfo []ModelGroupInfo
 		for _, group := range dbGroups {
 			var modelCount int64
 			if err := router.GetDB().Model(&models.ModelConfig{}).Where("model_group_id = ?", group.ID).Count(&modelCount).Error; err != nil {
-				router.GetLogger().Errorf("Failed to count models for group %s: %v", group.GroupID, err)
+				router.GetLogger().Errorf("Failed to count models for group %d: %v", group.ID, err)
 				modelCount = 0
 			}
 
-			result = append(result, gin.H{
-				"id":       group.ID,        // 数据库主键ID
-				"group_id": group.GroupID,   // 用户定义的ID
-				"strategy": group.Strategy,
-				"models":   int(modelCount), // 模型数量
+			var modelConfigs []models.ModelConfig
+			if err := router.GetDB().Where("model_group_id = ?", group.ID).Find(&modelConfigs).Error; err != nil {
+				router.GetLogger().Errorf("Failed to load models for group %d: %v", group.ID, err)
+				modelConfigs = []models.ModelConfig{}
+			}
+
+			groupsInfo = append(groupsInfo, ModelGroupInfo{
+				ID:         group.ID,
+				GroupID:    group.GroupID,
+				Strategy:   group.Strategy,
+				ModelCount: int(modelCount),
+				Models:     modelConfigs,
 			})
 		}
 
-		c.JSON(200, models.NewSuccessResponse("Model groups retrieved successfully", result))
+		c.JSON(200, models.NewSuccessResponse("Model groups retrieved successfully", groupsInfo))
 	}
 }
 
 // handleCreateModelGroup 处理创建模型组
 func handleCreateModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req models.CreateModelGroupRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, models.NewErrorResponse("Invalid request: "+err.Error()))
+		var group models.ModelGroup
+		if err := c.ShouldBindJSON(&group); err != nil {
+			c.JSON(400, models.NewErrorResponse("Invalid request format: "+err.Error()))
 			return
 		}
 
-		// 验证模型组是否已存在
-		if _, err := router.GetModelGroup(req.GroupID); err == nil {
-			c.JSON(409, models.NewErrorResponse("Model group already exists"))
+		// 设置默认策略
+		if group.Strategy == "" {
+			group.Strategy = "fallback"
+		}
+
+		// 使用 Unscoped() 检查是否存在（包括软删除的记录）
+		var existingGroup models.ModelGroup
+		err := router.GetDB().Unscoped().Where("group_id = ?", group.GroupID).First(&existingGroup).Error
+
+		if err == nil {
+			// 记录存在（包括软删除的）
+			if existingGroup.DeletedAt.Valid {
+				// 记录已被软删除，执行正确的"复活"操作
+				existingGroup.Strategy = group.Strategy
+				existingGroup.DeletedAt = gorm.DeletedAt{} // 正确重置软删除
+
+				if err := router.GetDB().Unscoped().Save(&existingGroup).Error; err != nil {
+					c.JSON(500, models.NewErrorResponse("Failed to restore model group: "+err.Error()))
+					return
+				}
+
+				// 刷新缓存
+				if err := router.RefreshData(); err != nil {
+					router.GetLogger().Warnf("Failed to refresh cache after restoring model group: %v", err)
+				}
+
+				// 返回恢复后的数据
+				c.JSON(200, models.NewSuccessResponse("Model group restored successfully", gin.H{
+					"id":       existingGroup.ID,
+					"group_id": group.GroupID,
+					"strategy": group.Strategy,
+				}))
+			} else {
+				// 记录存在且未被删除
+				c.JSON(400, models.NewErrorResponse("Group ID already exists"))
+				return
+			}
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 记录完全不存在，创建新记录
+			if err := router.GetDB().Create(&group).Error; err != nil {
+				router.GetLogger().Errorf("[ERROR] AddGroup | ID: %s | Error: %v", group.GroupID, err)
+				c.JSON(500, models.NewErrorResponse("Failed to create model group: "+err.Error()))
+				return
+			}
+
+			// 刷新缓存
+			if err := router.RefreshData(); err != nil {
+				router.GetLogger().Warnf("Failed to refresh cache after creating model group: %v", err)
+			}
+
+			router.GetLogger().Infof("[INFO] CreateGroup | ID: %s | Strategy: %s | Success", group.GroupID, group.Strategy)
+			c.JSON(200, models.NewSuccessResponse("Model group created successfully", group))
+		} else {
+			// 数据库查询错误
+			router.GetLogger().Errorf("[ERROR] AddGroup | Database check failed | Error: %v", err)
+			c.JSON(500, models.NewErrorResponse("Failed to check model group: "+err.Error()))
 			return
 		}
-
-		// 创建模型组
-		group := models.ModelGroup{
-			GroupID:  req.GroupID,
-			Strategy: req.Strategy,
-		}
-
-		// 写入数据库
-		if err := router.GetDB().Create(&group).Error; err != nil {
-			c.JSON(500, models.NewErrorResponse("Failed to create model group: "+err.Error()))
-			return
-		}
-
-		// 刷新缓存
-		if err := router.RefreshData(); err != nil {
-			// 即使缓存刷新失败，数据已经写入数据库
-			router.GetLogger().Warnf("Failed to refresh cache after creating model group: %v", err)
-		}
-
-		// 返回创建的模型组信息，包含数据库ID
-		c.JSON(201, models.NewSuccessResponse("Model group created successfully", gin.H{
-			"id":       group.ID,        // 数据库主键ID
-			"group_id": group.GroupID,   // 用户定义的ID
-			"strategy": group.Strategy,
-		}))
 	}
 }
 
@@ -120,97 +221,90 @@ func handleGetModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 		groupIDStr := c.Param("group_id")
 
 		var group models.ModelGroup
-		db := router.GetDB()
+		var err error
 
-		// 先尝试作为数字ID查询
-		if id, err := strconv.ParseUint(groupIDStr, 10, 32); err == nil {
-			// 按主键ID查询，包含预加载的模型和API密钥
-			if err := db.Preload("Models").Preload("Models.APIKeys").
-				Preload("Models.Stats").First(&group, id).Error; err == nil {
-				// 找到了，直接返回
-				buildModelGroupResponse(c, group)
+		// 尝试先按ID查找（数字ID）
+		if id, parseErr := parseAndValidateID(groupIDStr, "group_id"); parseErr == nil {
+			err = router.GetDB().First(&group, id).Error
+			if err != nil {
+				c.JSON(404, models.NewErrorResponse("Model group not found"))
+				return
+			}
+		} else {
+			// 如果不是数字，按GroupID查找（字符串）
+			err = router.GetDB().Where("group_id = ?", groupIDStr).First(&group).Error
+			if err != nil {
+				c.JSON(404, models.NewErrorResponse("Model group not found"))
 				return
 			}
 		}
 
-		// 如果按ID没找到，尝试按group_id字段查询
-		if err := db.Preload("Models").Preload("Models.APIKeys").
-			Preload("Models.Stats").Where("group_id = ?", groupIDStr).First(&group).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(404, models.NewErrorResponse("Model group not found"))
-			} else {
-				c.JSON(500, models.NewErrorResponse("Failed to query model group: "+err.Error()))
+		// 查询模型配置
+		var modelConfigs []models.ModelConfig
+		if err := router.GetDB().Where("model_group_id = ?", group.ID).Find(&modelConfigs).Error; err != nil {
+			modelConfigs = []models.ModelConfig{}
+		}
+
+		// 查询每个模型的API密钥
+		for i := range modelConfigs {
+			var keys []models.APIKey
+			if err := router.GetDB().Where("model_config_id = ?", modelConfigs[i].ID).Find(&keys).Error; err != nil {
+				router.GetLogger().Errorf("Failed to load keys for model %d: %v", modelConfigs[i].ID, err)
+				keys = []models.APIKey{}
 			}
-			return
+			modelConfigs[i].APIKeys = keys
 		}
 
-		// 找到了，构建响应
-		buildModelGroupResponse(c, group)
+		group.Models = modelConfigs
+
+		c.JSON(200, models.NewSuccessResponse("Model group retrieved successfully", group))
 	}
-}
-
-// buildModelGroupResponse 构建模型组响应数据
-func buildModelGroupResponse(c *gin.Context, group models.ModelGroup) {
-	// 构建模型数据
-	modelData := make([]gin.H, len(group.Models))
-	for i, model := range group.Models {
-		// 构建API密钥数据
-		keys := make([]gin.H, len(model.APIKeys))
-		for j, key := range model.APIKeys {
-			keys[j] = gin.H{
-				"id":         key.ID,
-				"key_value":  models.MaskAPIKey(key.KeyValue),
-				"full_key":   key.KeyValue, // 完整的key，用于复制
-				"created_at": key.CreatedAt,
-			}
-		}
-
-		// 获取请求统计（如果有）
-		var totalRequests int64
-		if model.Stats != nil {
-			totalRequests = model.Stats.TotalRequests
-		}
-
-		modelData[i] = gin.H{
-			"id":             model.ID,
-			"provider_name":  model.ProviderName,
-			"upstream_url":   model.UpstreamURL,
-			"upstream_model": model.UpstreamModel,
-			"timeout":        model.Timeout,
-			"keys_count":     len(keys),
-			"keys":           keys,
-			"total_requests": totalRequests,
-			"created_at":     model.CreatedAt,
-		}
-	}
-
-	c.JSON(200, models.NewSuccessResponse("Model group retrieved successfully", gin.H{
-		"id":       group.ID,
-		"group_id": group.GroupID,
-		"strategy": group.Strategy,
-		"models":   modelData,
-	}))
 }
 
 // handleUpdateModelGroup 处理更新模型组
 func handleUpdateModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		groupID := c.Param("group_id")
-		var req models.UpdateModelGroupRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, models.NewErrorResponse("Invalid request: "+err.Error()))
+		groupIDStr := c.Param("group_id")
+
+		var updateData struct {
+			Strategy string `json:"strategy"`
+		}
+
+		if err := c.ShouldBindJSON(&updateData); err != nil {
+			c.JSON(400, models.NewErrorResponse("Invalid request format: "+err.Error()))
 			return
 		}
 
-		// 验证模型组是否存在
-		if _, err := router.GetModelGroup(groupID); err != nil {
-			c.JSON(404, models.NewErrorResponse(err.Error()))
+		var group models.ModelGroup
+		var err error
+
+		// 尝试先按ID查找（数字ID）
+		if id, parseErr := parseAndValidateID(groupIDStr, "group_id"); parseErr == nil {
+			err = router.GetDB().First(&group, id).Error
+		} else {
+			// 如果不是数字，按GroupID查找（字符串）
+			err = router.GetDB().Where("group_id = ?", groupIDStr).First(&group).Error
+		}
+
+		if err != nil {
+			c.JSON(404, models.NewErrorResponse("Model group not found"))
 			return
 		}
 
-		// 这里应该调用数据库更新逻辑
+		// 更新策略
+		if err := router.GetDB().Model(&group).Update("strategy", updateData.Strategy).Error; err != nil {
+			c.JSON(500, models.NewErrorResponse("Failed to update model group: "+err.Error()))
+			return
+		}
+
+		// 刷新缓存
+		if err := router.RefreshData(); err != nil {
+			router.GetLogger().Warnf("Failed to refresh cache after updating model group: %v", err)
+		}
+
 		c.JSON(200, models.NewSuccessResponse("Model group updated successfully", gin.H{
-			"group_id": groupID,
+			"group_id": group.GroupID, // 返回实际的GroupID
+			"strategy": updateData.Strategy,
 		}))
 	}
 }
@@ -218,52 +312,62 @@ func handleUpdateModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 // handleDeleteModelGroup 处理删除模型组
 func handleDeleteModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		groupID := c.Param("group_id")
+		groupIDStr := c.Param("group_id")
 
-		// 转换为数字ID
-		id, err := strconv.ParseUint(groupID, 10, 32)
-		if err != nil {
-			c.JSON(400, models.NewErrorResponse("Invalid group ID: must be a number"))
-			return
-		}
-
-		// 开始事务
-		tx := router.GetDB().Begin()
-		defer func() {
-			if r := recover(); r != nil {
-				tx.Rollback()
-			}
-		}()
-
-		// 查询模型组
 		var group models.ModelGroup
-		if err := tx.First(&group, id).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(404, models.NewErrorResponse("Model group not found"))
-			} else {
-				c.JSON(500, models.NewErrorResponse("Failed to query model group: "+err.Error()))
+		var err error
+
+		// 尝试先按ID查���（数字ID）
+		if id, parseErr := parseAndValidateID(groupIDStr, "group_id"); parseErr == nil {
+			err = router.GetDB().First(&group, id).Error
+		} else {
+			// 如果不是数字，按GroupID查找（字符串）
+			err = router.GetDB().Where("group_id = ?", groupIDStr).First(&group).Error
+		}
+
+		if err != nil {
+			c.JSON(404, models.NewErrorResponse("Model group not found"))
+			return
+		}
+
+		// 使用改进的事务处理
+		if err := withTransaction(router.GetDB(), func(tx *gorm.DB) error {
+			// 查询相关模型
+			var modelConfigs []models.ModelConfig
+			if err := tx.Where("model_group_id = ?", group.ID).Find(&modelConfigs).Error; err != nil {
+				return fmt.Errorf("failed to query models: %w", err)
 			}
-			tx.Rollback()
-			return
-		}
 
-		// 删除相关的统计信息
-		if err := tx.Where("model_group_id = ?", id).Delete(&models.ModelStats{}).Error; err != nil {
-			tx.Rollback()
-			c.JSON(500, models.NewErrorResponse("Failed to delete stats: "+err.Error()))
-			return
-		}
+			// 删除模型统计、API密钥
+			for _, model := range modelConfigs {
+				if err := tx.Where("model_config_id = ?", model.ID).Delete(&models.ModelStats{}).Error; err != nil {
+					return fmt.Errorf("failed to delete model stats: %w", err)
+				}
 
-		// 删除模型组（级联删除模型和API密钥）
-		if err := tx.Delete(&group).Error; err != nil {
-			tx.Rollback()
-			c.JSON(500, models.NewErrorResponse("Failed to delete model group: "+err.Error()))
-			return
-		}
+				if err := tx.Where("model_config_id = ?", model.ID).Delete(&models.APIKey{}).Error; err != nil {
+					return fmt.Errorf("failed to delete API keys: %w", err)
+				}
+			}
 
-		// 提交事务
-		if err := tx.Commit().Error; err != nil {
-			c.JSON(500, models.NewErrorResponse("Failed to commit transaction: "+err.Error()))
+			// 删除模型配置
+			if err := tx.Where("model_group_id = ?", group.ID).Delete(&models.ModelConfig{}).Error; err != nil {
+				return fmt.Errorf("failed to delete model configs: %w", err)
+			}
+
+			// 删除模型组统计
+			if err := tx.Where("model_group_id = ?", group.ID).Delete(&models.ModelStats{}).Error; err != nil {
+				return fmt.Errorf("failed to delete group stats: %w", err)
+			}
+
+			// 删除模型组
+			if err := tx.Delete(&group).Error; err != nil {
+				return fmt.Errorf("failed to delete model group: %w", err)
+			}
+
+			return nil
+		}); err != nil {
+			router.GetLogger().Errorf("[ERROR] DeleteGroup | ID: %s | Error: %v", group.GroupID, err)
+			c.JSON(500, models.NewErrorResponse(err.Error()))
 			return
 		}
 
@@ -272,8 +376,9 @@ func handleDeleteModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 			router.GetLogger().Warnf("Failed to refresh cache after deleting model group: %v", err)
 		}
 
+		router.GetLogger().Infof("[INFO] DeleteGroup | ID: %s | Success", group.GroupID)
 		c.JSON(200, models.NewSuccessResponse("Model group deleted successfully", gin.H{
-			"group_id": groupID,
+			"group_id": group.GroupID, // 返回实际的GroupID
 		}))
 	}
 }
@@ -281,87 +386,77 @@ func handleDeleteModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 // handleCreateModel 处理创建模型
 func handleCreateModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		groupIDParam := c.Param("group_id")
-
-		// 转换为数字ID
-		groupID, err := strconv.ParseUint(groupIDParam, 10, 32)
-		if err != nil {
-			c.JSON(400, models.NewErrorResponse("Invalid group ID: must be a number"))
-			return
-		}
+		groupIDStr := c.Param("group_id")
 
 		var req models.CreateModelRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, models.NewErrorResponse("Invalid request: "+err.Error()))
+			c.JSON(400, models.NewErrorResponse("Invalid request format: "+err.Error()))
 			return
 		}
 
-		// 验证模型组是否存在
 		var group models.ModelGroup
-		if err := router.GetDB().First(&group, groupID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(404, models.NewErrorResponse("Model group not found"))
-			} else {
-				c.JSON(500, models.NewErrorResponse("Failed to query model group: "+err.Error()))
-			}
+		var err error
+
+		// 尝试先按ID查找（数字ID）
+		if id, parseErr := parseAndValidateID(groupIDStr, "group_id"); parseErr == nil {
+			err = router.GetDB().Unscoped().First(&group, id).Error
+		} else {
+			// 如果不是数字，按GroupID查找（字符串）
+			err = router.GetDB().Unscoped().Where("group_id = ?", groupIDStr).First(&group).Error
+		}
+
+		if err != nil {
+			c.JSON(404, models.NewErrorResponse("Model group not found"))
 			return
 		}
 
-		// 创建模型配置
-		model := models.ModelConfig{
-			ProviderName:  req.ProviderName,
-			UpstreamURL:   req.UpstreamURL,
-			UpstreamModel: req.UpstreamModel,
-			ModelGroupID:  uint(groupID),
-			Timeout:       req.Timeout,
-		}
-
-		// 开始事务
-		tx := router.GetDB().Begin()
-		defer func() {
-			if r := recover(); r != nil {
-				tx.Rollback()
+		// 使用事务处理模型和API密钥的创建
+		if err := withTransaction(router.GetDB(), func(tx *gorm.DB) error {
+			// 创建模型配置
+			model := models.ModelConfig{
+				ProviderName:  req.ProviderName,
+				UpstreamURL:   req.UpstreamURL,
+				UpstreamModel: req.UpstreamModel,
+				Timeout:       req.Timeout,
+				ModelGroupID:  group.ID,
 			}
-		}()
 
-		// 创建模型配置
-		if err := tx.Create(&model).Error; err != nil {
-			tx.Rollback()
+			if err := tx.Create(&model).Error; err != nil {
+				return fmt.Errorf("failed to create model: %w", err)
+			}
+
+			// 创建API密钥
+			for _, key := range req.Keys {
+				if key == "" {
+					continue // 跳过空密钥
+				}
+				apiKey := models.APIKey{
+					KeyValue:      key,
+					ModelConfigID: model.ID,
+				}
+				if err := tx.Create(&apiKey).Error; err != nil {
+					return fmt.Errorf("failed to create API key: %w", err)
+				}
+			}
+
+			return nil
+		}); err != nil {
+			router.GetLogger().Errorf("[ERROR] CreateModel | Group: %s | Model: %s | Error: %v", group.GroupID, req.UpstreamModel, err)
 			c.JSON(500, models.NewErrorResponse("Failed to create model: "+err.Error()))
-			return
-		}
-
-		// 创建API密钥
-		for _, keyValue := range req.Keys {
-			apiKey := models.APIKey{
-				KeyValue:      keyValue,
-				ModelConfigID: model.ID,
-			}
-			if err := tx.Create(&apiKey).Error; err != nil {
-				tx.Rollback()
-				c.JSON(500, models.NewErrorResponse("Failed to create API key: "+err.Error()))
-				return
-			}
-		}
-
-		// 提交事务
-		if err := tx.Commit().Error; err != nil {
-			c.JSON(500, models.NewErrorResponse("Failed to commit transaction: "+err.Error()))
 			return
 		}
 
 		// 刷新缓存
 		if err := router.RefreshData(); err != nil {
-			// 即使缓存刷新失败，数据已经写入数据库
 			router.GetLogger().Warnf("Failed to refresh cache after creating model: %v", err)
 		}
 
-		c.JSON(201, models.NewSuccessResponse("Model created successfully", gin.H{
-			"id":             model.ID,
-			"group_id":       groupIDParam,
+		router.GetLogger().Infof("[INFO] CreateModel | Group: %s | Model: %s | Keys: %d | Success", group.GroupID, req.UpstreamModel, len(req.Keys))
+		c.JSON(200, models.NewSuccessResponse("Model created successfully", gin.H{
 			"provider_name":  req.ProviderName,
 			"upstream_url":   req.UpstreamURL,
 			"upstream_model": req.UpstreamModel,
+			"timeout":        req.Timeout,
 			"keys_count":     len(req.Keys),
 		}))
 	}
@@ -371,54 +466,40 @@ func handleCreateModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 func handleUpdateModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		modelIDStr := c.Param("model_id")
-		modelID, err := strconv.ParseUint(modelIDStr, 10, 32)
+
+		var updateData struct {
+			ProviderName  string `json:"provider_name"`
+			UpstreamURL   string `json:"upstream_url"`
+			UpstreamModel string `json:"upstream_model"`
+			Timeout       int    `json:"timeout"`
+		}
+
+		if err := c.ShouldBindJSON(&updateData); err != nil {
+			c.JSON(400, models.NewErrorResponse("Invalid request format: "+err.Error()))
+			return
+		}
+
+		// 验证并解析模型ID
+		modelID, err := parseAndValidateID(modelIDStr, "model_id")
 		if err != nil {
-			c.JSON(400, models.NewErrorResponse("Invalid model ID"))
+			c.JSON(400, models.NewErrorResponse(err.Error()))
 			return
 		}
 
-		var req models.UpdateModelRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, models.NewErrorResponse("Invalid request: "+err.Error()))
-			return
-		}
-
-		// 查询模型
 		var model models.ModelConfig
 		if err := router.GetDB().First(&model, modelID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(404, models.NewErrorResponse("Model not found"))
-			} else {
-				c.JSON(500, models.NewErrorResponse("Failed to query model: "+err.Error()))
-			}
+			c.JSON(404, models.NewErrorResponse("Model not found"))
 			return
 		}
 
-		// 使用结构体更新，只更新非零值字段
-		updates := make(map[string]interface{})
-
-		if req.ProviderName != nil && *req.ProviderName != model.ProviderName {
-			updates["provider_name"] = *req.ProviderName
-		}
-		if req.UpstreamURL != nil && *req.UpstreamURL != model.UpstreamURL {
-			updates["upstream_url"] = *req.UpstreamURL
-		}
-		if req.UpstreamModel != nil && *req.UpstreamModel != model.UpstreamModel {
-			updates["upstream_model"] = *req.UpstreamModel
-		}
-		if req.Timeout != nil && *req.Timeout != model.Timeout {
-			updates["timeout"] = *req.Timeout
+		// 更新模型配置
+		updates := map[string]interface{}{
+			"provider_name":  updateData.ProviderName,
+			"upstream_url":   updateData.UpstreamURL,
+			"upstream_model": updateData.UpstreamModel,
+			"timeout":        updateData.Timeout,
 		}
 
-		// 如果没有任何字段需要更新
-		if len(updates) == 0 {
-			c.JSON(200, models.NewSuccessResponse("Model updated successfully (no changes)", gin.H{
-				"model_id": modelID,
-			}))
-			return
-		}
-
-		// 更新数据库
 		if err := router.GetDB().Model(&model).Updates(updates).Error; err != nil {
 			c.JSON(500, models.NewErrorResponse("Failed to update model: "+err.Error()))
 			return
@@ -439,49 +520,40 @@ func handleUpdateModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 func handleDeleteModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		modelIDStr := c.Param("model_id")
-		modelID, err := strconv.ParseUint(modelIDStr, 10, 32)
+
+		// 验证并解析模型ID
+		modelID, err := parseAndValidateID(modelIDStr, "model_id")
 		if err != nil {
-			c.JSON(400, models.NewErrorResponse("Invalid model ID"))
+			c.JSON(400, models.NewErrorResponse(err.Error()))
 			return
 		}
 
-		// 开始事务
-		tx := router.GetDB().Begin()
-		defer func() {
-			if r := recover(); r != nil {
-				tx.Rollback()
-			}
-		}()
-
-		// 查询模型
 		var model models.ModelConfig
-		if err := tx.First(&model, modelID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(404, models.NewErrorResponse("Model not found"))
-			} else {
-				c.JSON(500, models.NewErrorResponse("Failed to query model: "+err.Error()))
+		if err := router.GetDB().First(&model, modelID).Error; err != nil {
+			c.JSON(404, models.NewErrorResponse("Model not found"))
+			return
+		}
+
+		// 使用改进的事务处理
+		if err := withTransaction(router.GetDB(), func(tx *gorm.DB) error {
+			// 删除API密钥
+			if err := tx.Where("model_config_id = ?", model.ID).Delete(&models.APIKey{}).Error; err != nil {
+				return fmt.Errorf("failed to delete API keys: %w", err)
 			}
-			tx.Rollback()
-			return
-		}
 
-		// 删除相关的API密钥
-		if err := tx.Where("model_config_id = ?", modelID).Delete(&models.APIKey{}).Error; err != nil {
-			tx.Rollback()
-			c.JSON(500, models.NewErrorResponse("Failed to delete API keys: "+err.Error()))
-			return
-		}
+			// 删除统计数据
+			if err := tx.Where("model_config_id = ?", model.ID).Delete(&models.ModelStats{}).Error; err != nil {
+				return fmt.Errorf("failed to delete model stats: %w", err)
+			}
 
-		// 删除模型
-		if err := tx.Delete(&model).Error; err != nil {
-			tx.Rollback()
-			c.JSON(500, models.NewErrorResponse("Failed to delete model: "+err.Error()))
-			return
-		}
+			// 删除模型配置
+			if err := tx.Delete(&model).Error; err != nil {
+				return fmt.Errorf("failed to delete model: %w", err)
+			}
 
-		// 提交事务
-		if err := tx.Commit().Error; err != nil {
-			c.JSON(500, models.NewErrorResponse("Failed to commit transaction: "+err.Error()))
+			return nil
+		}); err != nil {
+			c.JSON(500, models.NewErrorResponse(err.Error()))
 			return
 		}
 
@@ -496,43 +568,69 @@ func handleDeleteModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 	}
 }
 
-// handleCreateAPIKey 处理创建API Key
+// handleCreateAPIKey 处理创建API密钥
 func handleCreateAPIKey(router *core.StatelessModelRouter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		modelIDStr := c.Param("model_id")
-		modelID, err := strconv.ParseUint(modelIDStr, 10, 32)
+
+		// 验证并解析模型ID
+		modelID, err := parseAndValidateID(modelIDStr, "model_id")
 		if err != nil {
-			c.JSON(400, models.NewErrorResponse("Invalid model ID"))
+			c.JSON(400, models.NewErrorResponse(err.Error()))
 			return
 		}
 
-		var req struct {
+		var requestData struct {
 			Key string `json:"key" binding:"required"`
 		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, models.NewErrorResponse("Invalid request: "+err.Error()))
+
+		if err := c.ShouldBindJSON(&requestData); err != nil {
+			c.JSON(400, models.NewErrorResponse("Invalid request format: "+err.Error()))
 			return
 		}
 
-		// 验证模型是否存在
 		var model models.ModelConfig
 		if err := router.GetDB().First(&model, modelID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(404, models.NewErrorResponse("Model not found"))
-			} else {
-				c.JSON(500, models.NewErrorResponse("Failed to query model: "+err.Error()))
-			}
+			c.JSON(404, models.NewErrorResponse("Model not found"))
 			return
 		}
 
-		// 创建API密钥
-		apiKey := models.APIKey{
-			KeyValue:      req.Key,
-			ModelConfigID: uint(modelID),
-		}
+		// 检查是否已存在（包括软删除的记录）
+		var existingKey models.APIKey
+		err = router.GetDB().Unscoped().Where("key_value = ? AND model_config_id = ?", requestData.Key, model.ID).First(&existingKey).Error
 
-		if err := router.GetDB().Create(&apiKey).Error; err != nil {
-			c.JSON(500, models.NewErrorResponse("Failed to create API key: "+err.Error()))
+		if err == nil {
+			if existingKey.DeletedAt.Valid {
+				// 记录已被软删除，执行恢复操作
+				existingKey.DeletedAt = gorm.DeletedAt{}
+				if err = router.GetDB().Unscoped().Save(&existingKey).Error; err != nil {
+					c.JSON(500, models.NewErrorResponse("Failed to restore API key: "+err.Error()))
+					return
+				}
+				c.JSON(200, models.NewSuccessResponse("API key restored successfully", existingKey))
+			} else {
+				// 记录存在且未被删除
+				c.JSON(400, models.NewErrorResponse("API key already exists"))
+				return
+			}
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 记录完全不存在，创建新记录
+			apiKey := models.APIKey{
+				KeyValue:      requestData.Key,
+				ModelConfigID: model.ID,
+			}
+
+			if err := router.GetDB().Create(&apiKey).Error; err != nil {
+				router.GetLogger().Errorf("[ERROR] CreateAPIKey | Model: %d | Error: %v", model.ID, err)
+				c.JSON(500, models.NewErrorResponse("Failed to create API key: "+err.Error()))
+				return
+			}
+			router.GetLogger().Infof("[INFO] CreateAPIKey | Model: %d | Success", model.ID)
+			c.JSON(200, models.NewSuccessResponse("API key created successfully", apiKey))
+		} else {
+			// 数据库查询错误
+			router.GetLogger().Errorf("[ERROR] CreateAPIKey | Model: %d | Database check failed | Error: %v", model.ID, err)
+			c.JSON(500, models.NewErrorResponse("Failed to check API key: "+err.Error()))
 			return
 		}
 
@@ -540,33 +638,24 @@ func handleCreateAPIKey(router *core.StatelessModelRouter) gin.HandlerFunc {
 		if err := router.RefreshData(); err != nil {
 			router.GetLogger().Warnf("Failed to refresh cache after creating API key: %v", err)
 		}
-
-		c.JSON(201, models.NewSuccessResponse("API key created successfully", gin.H{
-			"model_id": modelID,
-			"key_id":   apiKey.ID,
-			"key":      models.MaskAPIKey(req.Key),
-		}))
 	}
 }
 
-// handleDeleteAPIKey 处理删除API Key
+// handleDeleteAPIKey 处理删除API密钥
 func handleDeleteAPIKey(router *core.StatelessModelRouter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		keyIDStr := c.Param("key_id")
-		keyID, err := strconv.ParseUint(keyIDStr, 10, 32)
+
+		// 验证并解析密钥ID
+		keyID, err := parseAndValidateID(keyIDStr, "key_id")
 		if err != nil {
-			c.JSON(400, models.NewErrorResponse("Invalid key ID"))
+			c.JSON(400, models.NewErrorResponse(err.Error()))
 			return
 		}
 
-		// 查询并删除API Key
 		var apiKey models.APIKey
 		if err := router.GetDB().First(&apiKey, keyID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(404, models.NewErrorResponse("API key not found"))
-			} else {
-				c.JSON(500, models.NewErrorResponse("Failed to query API key: "+err.Error()))
-			}
+			c.JSON(404, models.NewErrorResponse("API key not found"))
 			return
 		}
 
@@ -609,6 +698,149 @@ func handleReload(router *core.StatelessModelRouter) gin.HandlerFunc {
 	}
 }
 
+// handleListAdminKeys 处理列出所有管理员密钥
+func handleListAdminKeys() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := c.MustGet("db").(*gorm.DB)
+
+		var adminKeys []models.AdminKey
+		if err := db.Order("id ASC").Find(&adminKeys).Error; err != nil {
+			c.JSON(500, models.NewErrorResponse("Failed to query admin keys: "+err.Error()))
+			return
+		}
+
+		// 返回完整密钥信息（包含原始密钥和脱敏预览）
+		type AdminKeyResponse struct {
+			ID        uint   `json:"id"`
+			Name      string `json:"name"`
+			Key       string `json:"key"`          // 【修改】返回完整密钥
+			KeyPreview string `json:"key_preview"` // 保留脱敏预览用于显示
+			CreatedAt int64  `json:"created_at"`
+		}
+
+		response := make([]AdminKeyResponse, len(adminKeys))
+		for i, key := range adminKeys {
+			// 使用安全的密钥脱敏函数
+			keyPreview := safeMaskKey(key.Key)
+			response[i] = AdminKeyResponse{
+				ID:         key.ID,
+				Name:       key.Name,
+				Key:        key.Key,         // 【修改】返回完整密钥
+				KeyPreview: keyPreview,
+				CreatedAt:  key.CreatedAt.Unix(),
+			}
+		}
+
+		c.JSON(200, models.NewSuccessResponse("Admin keys retrieved successfully", response))
+	}
+}
+
+// handleCreateAdminKey 处理创建新的管理员密钥
+func handleCreateAdminKey() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := c.MustGet("db").(*gorm.DB)
+
+		var request struct {
+			Name string `json:"name" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(400, models.NewErrorResponse("Invalid request format: "+err.Error()))
+			return
+		}
+
+		// 检查是否已有管理员密钥
+		var count int64
+		if err := db.Model(&models.AdminKey{}).Count(&count).Error; err != nil {
+			c.JSON(500, models.NewErrorResponse("Failed to check admin keys: "+err.Error()))
+			return
+		}
+
+		// 创建新的管理员密钥
+		adminKey := models.AdminKey{
+			Name: request.Name,
+			Key:  models.GenerateAdminKey(),
+		}
+
+		if err := db.Create(&adminKey).Error; err != nil {
+			// 检查是否是唯一索引冲突
+			if err.Error() == "UNIQUE constraint failed: admin_keys.key" {
+				c.JSON(500, models.NewErrorResponse("Generated admin key already exists, please try again"))
+				return
+			}
+			c.JSON(500, models.NewErrorResponse("Failed to create admin key: "+err.Error()))
+			return
+		}
+
+		c.JSON(200, models.NewSuccessResponse("Admin key created successfully", gin.H{
+			"id":   adminKey.ID,
+			"name": adminKey.Name,
+			"key":  adminKey.Key, // 只在创建时返回完整的密钥
+		}))
+	}
+}
+
+// handleDeleteAdminKey 处理删除管理员密钥
+func handleDeleteAdminKey() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db := c.MustGet("db").(*gorm.DB)
+
+		idStr := c.Param("id")
+		id, err := parseAndValidateID(idStr, "admin key ID")
+		if err != nil {
+			c.JSON(400, models.NewErrorResponse(err.Error()))
+			return
+		}
+
+		// 禁止删除 ID 为 1 的初始 Root Key
+		if id == 1 {
+			c.JSON(403, models.NewErrorResponse("Cannot delete the initial root key"))
+			return
+		}
+
+		// 检查要删除的密钥是否存在
+		var adminKey models.AdminKey
+		if err := db.First(&adminKey, id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(404, models.NewErrorResponse("Admin key not found"))
+				return
+			}
+			c.JSON(500, models.NewErrorResponse("Failed to query admin key: "+err.Error()))
+			return
+		}
+
+		// 使用事务来防止竞态条件
+		if err := withTransaction(db, func(tx *gorm.DB) error {
+			// 检查是否是最后一个管理员密钥（在事务内重新检查）
+			var count int64
+			if err := tx.Model(&models.AdminKey{}).Count(&count).Error; err != nil {
+				return fmt.Errorf("failed to count admin keys: %w", err)
+			}
+			if count <= 1 {
+				return fmt.Errorf("cannot delete the last admin key")
+			}
+
+			// 删除管理员密钥
+			if err := tx.Delete(&adminKey).Error; err != nil {
+				return fmt.Errorf("failed to delete admin key: %w", err)
+			}
+
+			return nil
+		}); err != nil {
+			status := 500
+			if err.Error() == "cannot delete the last admin key" {
+				status = 400
+			}
+			c.JSON(status, models.NewErrorResponse(err.Error()))
+			return
+		}
+		c.JSON(200, models.NewSuccessResponse("Admin key deleted successfully", gin.H{
+			"id":   adminKey.ID,
+			"name": adminKey.Name,
+		}))
+	}
+}
+
 // Helper functions
 
 func getGroupIDs(router *core.StatelessModelRouter) []string {
@@ -619,3 +851,4 @@ func getGroupIDs(router *core.StatelessModelRouter) []string {
 	}
 	return ids
 }
+
