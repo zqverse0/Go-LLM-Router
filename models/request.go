@@ -30,11 +30,12 @@ type ChatCompletionRequest struct {
 
 // ChatMessage 聊天消息
 type ChatMessage struct {
-	Role         string        `json:"role" binding:"required,oneof=system user assistant tool"`
-	Content      interface{}   `json:"content"`
-	Name         string        `json:"name,omitempty"`
-	ToolCallID   string        `json:"tool_call_id,omitempty"`
-	ToolCalls    []ChatToolCall `json:"tool_calls,omitempty"`
+	Role             string        `json:"role,omitempty" binding:"required,oneof=system user assistant tool"`
+	Content          interface{}   `json:"content,omitempty"`
+	ReasoningContent string        `json:"reasoning_content,omitempty"` // For DeepSeek reasoning models
+	Name             string        `json:"name,omitempty"`
+	ToolCallID       string        `json:"tool_call_id,omitempty"`
+	ToolCalls        []ChatToolCall `json:"tool_calls,omitempty"`
 }
 
 // ChatTool 工具定义

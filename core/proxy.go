@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -24,7 +25,7 @@ type RetryCursor struct {
 	IsPinned          bool   // 是否锁定模式（禁止切换模型）
 }
 
-// NewRetryCursor 创建新的重试��标
+// NewRetryCursor 创建新的重试标
 func NewRetryCursor(groupID, strategy string) *RetryCursor {
 	return &RetryCursor{
 		GroupID:           groupID,
@@ -90,7 +91,22 @@ func NewProxyHandlerStateless(router *StatelessModelRouter, logger *logrus.Logge
 		router: router,
 		logger: logger,
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			// 禁用全局超时，由 Context 和 Transport 控制
+			Timeout: 0,
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+				DialContext: (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+				ForceAttemptHTTP2:     true,
+				MaxIdleConns:          100,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+				// 等待首字节的超时时间
+				ResponseHeaderTimeout: 60 * time.Second,
+			},
 		},
 	}
 }
@@ -99,7 +115,7 @@ func NewProxyHandlerStateless(router *StatelessModelRouter, logger *logrus.Logge
 func getClientIP(c *gin.Context) string {
 	// 检查 X-Forwarded-For 头
 	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
-		// X-Forwarded-For 可能包含多个IP，取第��个
+		// X-Forwarded-For 可能包含多个IP，取第个
 		if idx := strings.Index(xff, ","); idx != -1 {
 			return strings.TrimSpace(xff[:idx])
 		}
@@ -132,7 +148,7 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 	// 生成请求ID（简单的时间戳 + 随机数）
 	requestID := fmt.Sprintf("%d", time.Now().UnixNano())
 
-	h.logger.Infof("🚀 Request: ID=%s | Model=%s | IP=%s", requestID, routing.GroupID, clientIP)
+	h.logger.Infof("🚀 Request: ID=%s | Model=%s | IP=%s | Stream=%v", requestID, routing.GroupID, clientIP, requestData.Stream)
 
 	// 获取模型组信息
 	group, err := h.router.GetModelGroup(routing.GroupID)
@@ -183,7 +199,7 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 			// 获取当前组的计数器来计算 Key 索引
 			keyCursor = h.router.GetInitialKeyIndex(initialModel.ID)
 		}
-		}
+	}
 
 	// 步骤 2: 基于游标的迭代循环
 	for attempt := 0; attempt < maxAttempts; attempt++ {
@@ -256,7 +272,16 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 		}
 
 		// 发送 HTTP 请求
-		ctx, cancel := h.router.ContextTimeout(time.Duration(selectedModel.Timeout) * time.Second)
+		// 如果是流式请求，使用超长超时时间（依靠 TCP Keep-Alive 和 IdleTimeout 维护）
+		// 如果是普通请求，使用模型配置的超时时间
+		var reqTimeout time.Duration
+		if requestData.Stream {
+			reqTimeout = 24 * time.Hour // 实际上依靠 IdleConnTimeout
+		} else {
+			reqTimeout = time.Duration(selectedModel.Timeout) * time.Second
+		}
+		
+		ctx, cancel := h.router.ContextTimeout(reqTimeout)
 		defer cancel()
 
 		req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewBuffer(reqBodyBytes))
@@ -282,7 +307,8 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 			continue
 		}
 
-		defer resp.Body.Close()
+		// 注意：不要立即 defer resp.Body.Close()，因为我们要读取 Body
+		// 只有在循环结束或出错时才关闭
 
 		if resp.StatusCode == 200 {
 			// 成功！
@@ -291,12 +317,55 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 
 			// 复制响应头
 			for k, v := range resp.Header {
+				// 跳过可能导致协议冲突或重复的头
+				// 1. 传输控制类
+				if k == "Content-Length" || k == "Content-Encoding" || k == "Transfer-Encoding" || k == "Connection" {
+					continue
+				}
+				// 2. CORS 类 (网关全局中间件已处理，禁止透传，防止出现双重 Header 导致客户端报错)
+				if k == "Access-Control-Allow-Origin" || k == "Access-Control-Allow-Methods" || k == "Access-Control-Allow-Headers" || k == "Access-Control-Allow-Credentials" {
+					continue
+				}
+				// 3. 其他系统头
+				if k == "Date" || k == "Server" {
+					continue
+				}
+
 				for _, val := range v {
 					c.Header(k, val)
 				}
 			}
-			c.Status(resp.StatusCode)
-			io.Copy(c.Writer, resp.Body)
+
+			// 决定使用哪种复制方式
+			if requestData.Stream {
+				// 强制设置 SSE 关键头
+				c.Header("Content-Type", "text/event-stream")
+				c.Header("Cache-Control", "no-cache")
+				c.Header("Connection", "keep-alive")
+				c.Header("X-Accel-Buffering", "no") // 禁用 Nginx 缓冲
+
+				c.Status(resp.StatusCode)
+				// 🔥 关键修复：立即刷新响应头，防止客户端超时
+				c.Writer.Flush()
+
+				// 流式响应：兼容性映射处理（支持 DeepSeek reasoning_content）
+				err := h.streamAndMapResponse(c.Writer, resp.Body)
+				if err != nil {
+					// 区分客户端断开和服务端错误
+					errStr := err.Error()
+					if strings.Contains(errStr, "broken pipe") || strings.Contains(errStr, "connection reset") {
+						h.logger.Warnf("⚠️ Stream disconnected by client (broken pipe): %v", err)
+					} else {
+						h.logger.Errorf("❌ Stream copy error: %v", err)
+					}
+				}
+			} else {
+				// 普通响应
+				c.Status(resp.StatusCode)
+				io.Copy(c.Writer, resp.Body)
+			}
+			
+			resp.Body.Close()
 			return
 		} else {
 			// 失败，记录错误
@@ -304,6 +373,8 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 
 			// 读取错误信息
 			errorBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close() // 读完立即关闭
+			
 			errorText := string(errorBody)
 			if len(errorText) > 200 {
 				errorText = errorText[:200]
@@ -323,15 +394,158 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 				h.logger.Warnf("⚠️ Attempt %d Failed: %d %s - retrying...", attempt+1, resp.StatusCode, getHTTPStatusText(resp.StatusCode))
 				h.advanceCursors(&modelCursor, &keyCursor, len(group.Models), len(modelKeys), routing.IsPinned, group.Strategy)
 			}
+		}
 	}
-}
 
 	// 所有尝试都失败了
 	h.logger.Errorf("💀 Failed: All %d attempts exhausted", maxAttempts)
 	h.sendFinalErrorResponse(c, 502, nil, fmt.Errorf("all models unavailable after %d attempts", maxAttempts))
 }
 
-// advanceCursors 推进游标的统一逻辑（基于您的优化思路）
+// streamAndMapResponse 处理流式响应并进行字段映射（兼容性补丁）
+// streamAndMapResponse 处理流式响应并进行字段映射（DeepSeek 思考模式适配）
+func (h *ProxyHandlerStateless) streamAndMapResponse(dst gin.ResponseWriter, src io.Reader) error {
+	scanner := bufio.NewScanner(src)
+	// 设置较大的缓冲区以处理长行
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+    // 状态标记
+    isFirstReasoning := true
+    inReasoningBlock := false
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		
+		// 1. 如果是空行，直接转发并刷新
+		if len(line) == 0 {
+			if _, err := dst.Write([]byte("\n")); err != nil {
+				return err
+			}
+			dst.Flush()
+			continue
+		}
+
+		// 2. 检查是否为 data: 开头
+		if !bytes.HasPrefix(line, []byte("data: ")) {
+			// 非数据行（如 event: ping），直接转发
+			if _, err := dst.Write(line); err != nil {
+				return err
+			}
+			if _, err := dst.Write([]byte("\n")); err != nil {
+				return err
+			}
+			dst.Flush()
+			continue
+		}
+
+		// 3. 解析 data 内容
+		dataPayload := bytes.TrimPrefix(line, []byte("data: "))
+		
+		// 检查是否为结束标记
+		if string(dataPayload) == "[DONE]" {
+			if _, err := dst.Write(line); err != nil {
+				return err
+			}
+			if _, err := dst.Write([]byte("\n")); err != nil {
+				return err
+			}
+			dst.Flush()
+			continue
+		}
+
+		// 4. 尝试解析 JSON
+		var chunk models.ChatCompletionResponse
+		if err := json.Unmarshal(dataPayload, &chunk); err != nil {
+			// 解析失败，透传原始数据
+			h.logger.Warnf("Failed to parse stream chunk: %v", err)
+			if _, err := dst.Write(line); err != nil {
+				return err
+			}
+			if _, err := dst.Write([]byte("\n")); err != nil {
+				return err
+			}
+			dst.Flush()
+			continue
+		}
+
+		// 5. 核心逻辑：DeepSeek 思考过程可视化处理
+		modified := false
+		if len(chunk.Choices) > 0 {
+			delta := &chunk.Choices[0].Delta
+            rc := delta.ReasoningContent
+            content := delta.StringContent()
+
+            if rc != "" {
+                // 检测到思考过程
+                
+                // 构造前缀
+                prefix := ""
+                if isFirstReasoning {
+                    prefix = "> 🧠 **Thinking Process:**\n> "
+                    isFirstReasoning = false
+                    inReasoningBlock = true
+                }
+                
+                // 处理换行符，确保引用格式延续
+                formattedRC := strings.ReplaceAll(rc, "\n", "\n> ")
+                
+                // 将格式化后的思考内容赋值给 content，以便 ChatBox 显示
+                // 注意：这里覆盖了可能存在的空 content
+                delta.Content = prefix + formattedRC
+                modified = true
+                
+            } else if content != "" {
+                // 检测到正文内容
+                
+                if inReasoningBlock {
+                    // 如果刚才还在思考块中，现在需要输出换行分隔符
+                    delta.Content = "\n\n" + content
+                    inReasoningBlock = false
+                    modified = true
+                }
+                // 否则，正常透传 content (无需修改)
+            }
+		}
+
+		// 6. 重组并发送
+		if modified {
+			newPayload, err := json.Marshal(chunk)
+			if err != nil {
+				h.logger.Errorf("Failed to marshal modified chunk: %v", err)
+				// 降级：发送原始数据
+				if _, err := dst.Write(line); err != nil {
+					return err
+				}
+			} else {
+				if _, err := dst.Write([]byte("data: ")); err != nil {
+					return err
+				}
+				if _, err := dst.Write(newPayload); err != nil {
+					return err
+				}
+			}
+		} else {
+			// 未修改，发送原始数据
+			if _, err := dst.Write(line); err != nil {
+				return err
+			}
+		}
+
+		// 结尾换行并刷新
+		if _, err := dst.Write([]byte("\n")); err != nil {
+			return err
+		}
+		dst.Flush()
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+		
+		// advanceCursors 推进游标的统一逻辑（基于您的优化思路）
 func (h *ProxyHandlerStateless) advanceCursors(modelCursor, keyCursor *int, totalModels, totalKeys int, isPinned bool, strategy string) bool {
 	// 边界检查
 	if totalKeys == 0 {
