@@ -96,16 +96,16 @@ func NewProxyHandlerStateless(router *StatelessModelRouter, logger *logrus.Logge
 			Transport: &http.Transport{
 				Proxy: http.ProxyFromEnvironment,
 				DialContext: (&net.Dialer{
-					Timeout:   30 * time.Second,
-					KeepAlive: 30 * time.Second,
+					Timeout:   60 * time.Second, // 移动端握手慢，增加到 60s
+					KeepAlive: 60 * time.Second, // 增加 KeepAlive
 				}).DialContext,
 				ForceAttemptHTTP2:     true,
 				MaxIdleConns:          100,
-				IdleConnTimeout:       90 * time.Second,
-				TLSHandshakeTimeout:   10 * time.Second,
+				IdleConnTimeout:       120 * time.Second, // 增加空闲超时
+				TLSHandshakeTimeout:   20 * time.Second,  // 增加 TLS 握手超时
 				ExpectContinueTimeout: 1 * time.Second,
 				// 等待首字节的超时时间
-				ResponseHeaderTimeout: 60 * time.Second,
+				ResponseHeaderTimeout: 120 * time.Second, // 宽容的响应头超时
 			},
 		},
 	}
@@ -338,11 +338,14 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 
 			// 决定使用哪种复制方式
 			if requestData.Stream {
-				// 强制设置 SSE 关键头
+				// 强制设置 SSE 关键头 (反缓冲魔法)
 				c.Header("Content-Type", "text/event-stream")
-				c.Header("Cache-Control", "no-cache")
+				c.Header("Cache-Control", "no-cache, no-transform") // 增强: no-transform
 				c.Header("Connection", "keep-alive")
-				c.Header("X-Accel-Buffering", "no") // 禁用 Nginx 缓冲
+				c.Header("X-Accel-Buffering", "no") // 禁用 Nginx/Caddy 缓冲
+				
+				// 强化 CORS (移动端 WebView 敏感)
+				c.Header("Access-Control-Allow-Origin", "*")
 
 				c.Status(resp.StatusCode)
 				// 🔥 关键修复：立即刷新响应头，防止客户端超时
