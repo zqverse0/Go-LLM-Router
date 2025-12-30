@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"llm-gateway/core"
+	"llm-gateway/core/security"
 	"llm-gateway/models"
 	"strconv"
 	"time"
@@ -26,7 +27,7 @@ func parseAndValidateID(idStr string, paramName string) (uint, error) {
 	return uint(id), nil
 }
 
-// withTransaction 执���事务处理，自动处理错误回滚
+// withTransaction 执行事务处理，自动处理错误回滚
 func withTransaction(db *gorm.DB, fn func(*gorm.DB) error) error {
 	tx := db.Begin()
 	defer func() {
@@ -63,7 +64,7 @@ func safeMaskKey(key string) string {
 }
 
 // handleRoot 处理根路径请求
-func handleRoot(router *core.StatelessModelRouter) gin.HandlerFunc {
+func handleRoot(lb *core.LoadBalancer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"name":    "LLM API Aggregation Gateway",
@@ -74,19 +75,19 @@ func handleRoot(router *core.StatelessModelRouter) gin.HandlerFunc {
 				"dashboard":   "/dashboard",
 				"admin_stats": "/admin/stats",
 			},
-			"model_groups": getGroupIDs(router),
+			"model_groups": getGroupIDs(lb),
 			"timestamp":    time.Now().Unix(),
 		})
 	}
 }
 
 // handleHealth 处理健康检查
-func handleHealth(router *core.StatelessModelRouter) gin.HandlerFunc {
+func handleHealth(lb *core.LoadBalancer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(200, models.HealthResponse{
 			Status:      "healthy",
 			Gateway:     "LLM API Aggregation Gateway",
-			ModelGroups: getGroupIDs(router),
+			ModelGroups: getGroupIDs(lb),
 			Timestamp:   time.Now().Unix(),
 		})
 	}
@@ -100,11 +101,11 @@ func handleDashboard() gin.HandlerFunc {
 }
 
 // handleListModelGroups 处理获取模型组列表
-func handleListModelGroups(router *core.StatelessModelRouter) gin.HandlerFunc {
+func handleListModelGroups(lb *core.LoadBalancer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 从数据库直接查询，避免缓存问题
 		var dbGroups []models.ModelGroup
-		if err := router.GetDB().Find(&dbGroups).Error; err != nil {
+		if err := lb.GetDB().Find(&dbGroups).Error; err != nil {
 			c.JSON(500, models.NewErrorResponse("Failed to query model groups: "+err.Error()))
 			return
 		}
@@ -121,14 +122,14 @@ func handleListModelGroups(router *core.StatelessModelRouter) gin.HandlerFunc {
 		var groupsInfo []ModelGroupInfo
 		for _, group := range dbGroups {
 			var modelCount int64
-			if err := router.GetDB().Model(&models.ModelConfig{}).Where("model_group_id = ?", group.ID).Count(&modelCount).Error; err != nil {
-				router.GetLogger().Errorf("Failed to count models for group %d: %v", group.ID, err)
+			if err := lb.GetDB().Model(&models.ModelConfig{}).Where("model_group_id = ?", group.ID).Count(&modelCount).Error; err != nil {
+				lb.GetLogger().Errorf("Failed to count models for group %d: %v", group.ID, err)
 				modelCount = 0
 			}
 
 			var modelConfigs []models.ModelConfig
-			if err := router.GetDB().Where("model_group_id = ?", group.ID).Find(&modelConfigs).Error; err != nil {
-				router.GetLogger().Errorf("Failed to load models for group %d: %v", group.ID, err)
+			if err := lb.GetDB().Where("model_group_id = ?", group.ID).Find(&modelConfigs).Error; err != nil {
+				lb.GetLogger().Errorf("Failed to load models for group %d: %v", group.ID, err)
 				modelConfigs = []models.ModelConfig{}
 			}
 
@@ -146,7 +147,7 @@ func handleListModelGroups(router *core.StatelessModelRouter) gin.HandlerFunc {
 }
 
 // handleCreateModelGroup 处理创建模型组
-func handleCreateModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
+func handleCreateModelGroup(lb *core.LoadBalancer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var group models.ModelGroup
 		if err := c.ShouldBindJSON(&group); err != nil {
@@ -161,7 +162,7 @@ func handleCreateModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 
 		// 使用 Unscoped() 检查是否存在（包括软删除的记录）
 		var existingGroup models.ModelGroup
-		err := router.GetDB().Unscoped().Where("group_id = ?", group.GroupID).First(&existingGroup).Error
+		err := lb.GetDB().Unscoped().Where("group_id = ?", group.GroupID).First(&existingGroup).Error
 
 		if err == nil {
 			// 记录存在（包括软删除的）
@@ -170,14 +171,14 @@ func handleCreateModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 				existingGroup.Strategy = group.Strategy
 				existingGroup.DeletedAt = gorm.DeletedAt{} // 正确重置软删除
 
-				if err := router.GetDB().Unscoped().Save(&existingGroup).Error; err != nil {
+				if err := lb.GetDB().Unscoped().Save(&existingGroup).Error; err != nil {
 					c.JSON(500, models.NewErrorResponse("Failed to restore model group: "+err.Error()))
 					return
 				}
 
 				// 刷新缓存
-				if err := router.RefreshData(); err != nil {
-					router.GetLogger().Warnf("Failed to refresh cache after restoring model group: %v", err)
+				if err := lb.RefreshData(); err != nil {
+					lb.GetLogger().Warnf("Failed to refresh cache after restoring model group: %v", err)
 				}
 
 				// 返回恢复后的数据
@@ -193,22 +194,22 @@ func handleCreateModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 			}
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			// 记录完全不存在，创建新记录
-			if err := router.GetDB().Create(&group).Error; err != nil {
-				router.GetLogger().Errorf("[ERROR] AddGroup | ID: %s | Error: %v", group.GroupID, err)
+			if err := lb.GetDB().Create(&group).Error; err != nil {
+				lb.GetLogger().Errorf("[ERROR] AddGroup | ID: %s | Error: %v", group.GroupID, err)
 				c.JSON(500, models.NewErrorResponse("Failed to create model group: "+err.Error()))
 				return
 			}
 
 			// 刷新缓存
-			if err := router.RefreshData(); err != nil {
-				router.GetLogger().Warnf("Failed to refresh cache after creating model group: %v", err)
+			if err := lb.RefreshData(); err != nil {
+				lb.GetLogger().Warnf("Failed to refresh cache after creating model group: %v", err)
 			}
 
-			router.GetLogger().Infof("[INFO] CreateGroup | ID: %s | Strategy: %s | Success", group.GroupID, group.Strategy)
+			lb.GetLogger().Infof("[INFO] CreateGroup | ID: %s | Strategy: %s | Success", group.GroupID, group.Strategy)
 			c.JSON(200, models.NewSuccessResponse("Model group created successfully", group))
 		} else {
 			// 数据库查询错误
-			router.GetLogger().Errorf("[ERROR] AddGroup | Database check failed | Error: %v", err)
+			lb.GetLogger().Errorf("[ERROR] AddGroup | Database check failed | Error: %v", err)
 			c.JSON(500, models.NewErrorResponse("Failed to check model group: "+err.Error()))
 			return
 		}
@@ -216,7 +217,7 @@ func handleCreateModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 }
 
 // handleGetModelGroup 处理获取单个模型组
-func handleGetModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
+func handleGetModelGroup(lb *core.LoadBalancer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		groupIDStr := c.Param("group_id")
 
@@ -225,14 +226,14 @@ func handleGetModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 
 		// 尝试先按ID查找（数字ID）
 		if id, parseErr := parseAndValidateID(groupIDStr, "group_id"); parseErr == nil {
-			err = router.GetDB().First(&group, id).Error
+			err = lb.GetDB().First(&group, id).Error
 			if err != nil {
 				c.JSON(404, models.NewErrorResponse("Model group not found"))
 				return
 			}
 		} else {
 			// 如果不是数字，按GroupID查找（字符串）
-			err = router.GetDB().Where("group_id = ?", groupIDStr).First(&group).Error
+			err = lb.GetDB().Where("group_id = ?", groupIDStr).First(&group).Error
 			if err != nil {
 				c.JSON(404, models.NewErrorResponse("Model group not found"))
 				return
@@ -241,17 +242,29 @@ func handleGetModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 
 		// 查询模型配置
 		var modelConfigs []models.ModelConfig
-		if err := router.GetDB().Where("model_group_id = ?", group.ID).Find(&modelConfigs).Error; err != nil {
+		if err := lb.GetDB().Where("model_group_id = ?", group.ID).Find(&modelConfigs).Error; err != nil {
 			modelConfigs = []models.ModelConfig{}
 		}
 
 		// 查询每个模型的API密钥
 		for i := range modelConfigs {
 			var keys []models.APIKey
-			if err := router.GetDB().Where("model_config_id = ?", modelConfigs[i].ID).Find(&keys).Error; err != nil {
-				router.GetLogger().Errorf("Failed to load keys for model %d: %v", modelConfigs[i].ID, err)
+			if err := lb.GetDB().Where("model_config_id = ?", modelConfigs[i].ID).Find(&keys).Error; err != nil {
+				lb.GetLogger().Errorf("Failed to load keys for model %d: %v", modelConfigs[i].ID, err)
 				keys = []models.APIKey{}
 			}
+
+			// 🔐 为显示目的解密 Key
+			for j := range keys {
+				decrypted, err := lb.Decrypt(keys[j].KeyValue)
+				if err == nil {
+					keys[j].KeyValue = decrypted
+				} else {
+					// 如果解密失败（可能是旧的明文），保持原样
+					lb.GetLogger().Warnf("Failed to decrypt key %d for display: %v", keys[j].ID, err)
+				}
+			}
+
 			modelConfigs[i].APIKeys = keys
 		}
 
@@ -262,7 +275,7 @@ func handleGetModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 }
 
 // handleUpdateModelGroup 处理更新模型组
-func handleUpdateModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
+func handleUpdateModelGroup(lb *core.LoadBalancer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		groupIDStr := c.Param("group_id")
 
@@ -280,10 +293,10 @@ func handleUpdateModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 
 		// 尝试先按ID查找（数字ID）
 		if id, parseErr := parseAndValidateID(groupIDStr, "group_id"); parseErr == nil {
-			err = router.GetDB().First(&group, id).Error
+			err = lb.GetDB().First(&group, id).Error
 		} else {
 			// 如果不是数字，按GroupID查找（字符串）
-			err = router.GetDB().Where("group_id = ?", groupIDStr).First(&group).Error
+			err = lb.GetDB().Where("group_id = ?", groupIDStr).First(&group).Error
 		}
 
 		if err != nil {
@@ -292,14 +305,14 @@ func handleUpdateModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 		}
 
 		// 更新策略
-		if err := router.GetDB().Model(&group).Update("strategy", updateData.Strategy).Error; err != nil {
+		if err := lb.GetDB().Model(&group).Update("strategy", updateData.Strategy).Error; err != nil {
 			c.JSON(500, models.NewErrorResponse("Failed to update model group: "+err.Error()))
 			return
 		}
 
 		// 刷新缓存
-		if err := router.RefreshData(); err != nil {
-			router.GetLogger().Warnf("Failed to refresh cache after updating model group: %v", err)
+		if err := lb.RefreshData(); err != nil {
+			lb.GetLogger().Warnf("Failed to refresh cache after updating model group: %v", err)
 		}
 
 		c.JSON(200, models.NewSuccessResponse("Model group updated successfully", gin.H{
@@ -310,19 +323,19 @@ func handleUpdateModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 }
 
 // handleDeleteModelGroup 处理删除模型组
-func handleDeleteModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
+func handleDeleteModelGroup(lb *core.LoadBalancer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		groupIDStr := c.Param("group_id")
 
 		var group models.ModelGroup
 		var err error
 
-		// 尝试先按ID查���（数字ID）
+		// 尝试先按ID查（数字ID）
 		if id, parseErr := parseAndValidateID(groupIDStr, "group_id"); parseErr == nil {
-			err = router.GetDB().First(&group, id).Error
+			err = lb.GetDB().First(&group, id).Error
 		} else {
 			// 如果不是数字，按GroupID查找（字符串）
-			err = router.GetDB().Where("group_id = ?", groupIDStr).First(&group).Error
+			err = lb.GetDB().Where("group_id = ?", groupIDStr).First(&group).Error
 		}
 
 		if err != nil {
@@ -331,7 +344,7 @@ func handleDeleteModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 		}
 
 		// 使用改进的事务处理
-		if err := withTransaction(router.GetDB(), func(tx *gorm.DB) error {
+		if err := withTransaction(lb.GetDB(), func(tx *gorm.DB) error {
 			// 查询相关模型
 			var modelConfigs []models.ModelConfig
 			if err := tx.Where("model_group_id = ?", group.ID).Find(&modelConfigs).Error; err != nil {
@@ -366,17 +379,17 @@ func handleDeleteModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 
 			return nil
 		}); err != nil {
-			router.GetLogger().Errorf("[ERROR] DeleteGroup | ID: %s | Error: %v", group.GroupID, err)
+			lb.GetLogger().Errorf("[ERROR] DeleteGroup | ID: %s | Error: %v", group.GroupID, err)
 			c.JSON(500, models.NewErrorResponse(err.Error()))
 			return
 		}
 
 		// 刷新缓存
-		if err := router.RefreshData(); err != nil {
-			router.GetLogger().Warnf("Failed to refresh cache after deleting model group: %v", err)
+		if err := lb.RefreshData(); err != nil {
+			lb.GetLogger().Warnf("Failed to refresh cache after deleting model group: %v", err)
 		}
 
-		router.GetLogger().Infof("[INFO] DeleteGroup | ID: %s | Success", group.GroupID)
+		lb.GetLogger().Infof("[INFO] DeleteGroup | ID: %s | Success", group.GroupID)
 		c.JSON(200, models.NewSuccessResponse("Model group deleted successfully", gin.H{
 			"group_id": group.GroupID, // 返回实际的GroupID
 		}))
@@ -384,7 +397,7 @@ func handleDeleteModelGroup(router *core.StatelessModelRouter) gin.HandlerFunc {
 }
 
 // handleCreateModel 处理创建模型
-func handleCreateModel(router *core.StatelessModelRouter) gin.HandlerFunc {
+func handleCreateModel(lb *core.LoadBalancer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		groupIDStr := c.Param("group_id")
 
@@ -399,10 +412,10 @@ func handleCreateModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 
 		// 尝试先按ID查找（数字ID）
 		if id, parseErr := parseAndValidateID(groupIDStr, "group_id"); parseErr == nil {
-			err = router.GetDB().Unscoped().First(&group, id).Error
+			err = lb.GetDB().Unscoped().First(&group, id).Error
 		} else {
 			// 如果不是数字，按GroupID查找（字符串）
-			err = router.GetDB().Unscoped().Where("group_id = ?", groupIDStr).First(&group).Error
+			err = lb.GetDB().Unscoped().Where("group_id = ?", groupIDStr).First(&group).Error
 		}
 
 		if err != nil {
@@ -411,7 +424,7 @@ func handleCreateModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 		}
 
 		// 使用事务处理模型和API密钥的创建
-		if err := withTransaction(router.GetDB(), func(tx *gorm.DB) error {
+		if err := withTransaction(lb.GetDB(), func(tx *gorm.DB) error {
 			// 创建模型配置
 			model := models.ModelConfig{
 				ProviderName:  req.ProviderName,
@@ -430,8 +443,15 @@ func handleCreateModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 				if key == "" {
 					continue // 跳过空密钥
 				}
+				
+				// 🔐 加密密钥
+				encryptedKey, err := lb.Encrypt(key)
+				if err != nil {
+					return fmt.Errorf("failed to encrypt API key: %w", err)
+				}
+
 				apiKey := models.APIKey{
-					KeyValue:      key,
+					KeyValue:      encryptedKey,
 					ModelConfigID: model.ID,
 				}
 				if err := tx.Create(&apiKey).Error; err != nil {
@@ -441,17 +461,17 @@ func handleCreateModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 
 			return nil
 		}); err != nil {
-			router.GetLogger().Errorf("[ERROR] CreateModel | Group: %s | Model: %s | Error: %v", group.GroupID, req.UpstreamModel, err)
+			lb.GetLogger().Errorf("[ERROR] CreateModel | Group: %s | Model: %s | Error: %v", group.GroupID, req.UpstreamModel, err)
 			c.JSON(500, models.NewErrorResponse("Failed to create model: "+err.Error()))
 			return
 		}
 
 		// 刷新缓存
-		if err := router.RefreshData(); err != nil {
-			router.GetLogger().Warnf("Failed to refresh cache after creating model: %v", err)
+		if err := lb.RefreshData(); err != nil {
+			lb.GetLogger().Warnf("Failed to refresh cache after creating model: %v", err)
 		}
 
-		router.GetLogger().Infof("[INFO] CreateModel | Group: %s | Model: %s | Keys: %d | Success", group.GroupID, req.UpstreamModel, len(req.Keys))
+		lb.GetLogger().Infof("[INFO] CreateModel | Group: %s | Model: %s | Keys: %d | Success", group.GroupID, req.UpstreamModel, len(req.Keys))
 		c.JSON(200, models.NewSuccessResponse("Model created successfully", gin.H{
 			"provider_name":  req.ProviderName,
 			"upstream_url":   req.UpstreamURL,
@@ -463,7 +483,7 @@ func handleCreateModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 }
 
 // handleUpdateModel 处理更新模型
-func handleUpdateModel(router *core.StatelessModelRouter) gin.HandlerFunc {
+func handleUpdateModel(lb *core.LoadBalancer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		modelIDStr := c.Param("model_id")
 
@@ -487,7 +507,7 @@ func handleUpdateModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 		}
 
 		var model models.ModelConfig
-		if err := router.GetDB().First(&model, modelID).Error; err != nil {
+		if err := lb.GetDB().First(&model, modelID).Error; err != nil {
 			c.JSON(404, models.NewErrorResponse("Model not found"))
 			return
 		}
@@ -500,14 +520,14 @@ func handleUpdateModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 			"timeout":        updateData.Timeout,
 		}
 
-		if err := router.GetDB().Model(&model).Updates(updates).Error; err != nil {
+		if err := lb.GetDB().Model(&model).Updates(updates).Error; err != nil {
 			c.JSON(500, models.NewErrorResponse("Failed to update model: "+err.Error()))
 			return
 		}
 
 		// 刷新缓存
-		if err := router.RefreshData(); err != nil {
-			router.GetLogger().Warnf("Failed to refresh cache after updating model: %v", err)
+		if err := lb.RefreshData(); err != nil {
+			lb.GetLogger().Warnf("Failed to refresh cache after updating model: %v", err)
 		}
 
 		c.JSON(200, models.NewSuccessResponse("Model updated successfully", gin.H{
@@ -517,7 +537,7 @@ func handleUpdateModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 }
 
 // handleDeleteModel 处理删除模型
-func handleDeleteModel(router *core.StatelessModelRouter) gin.HandlerFunc {
+func handleDeleteModel(lb *core.LoadBalancer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		modelIDStr := c.Param("model_id")
 
@@ -529,13 +549,13 @@ func handleDeleteModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 		}
 
 		var model models.ModelConfig
-		if err := router.GetDB().First(&model, modelID).Error; err != nil {
+		if err := lb.GetDB().First(&model, modelID).Error; err != nil {
 			c.JSON(404, models.NewErrorResponse("Model not found"))
 			return
 		}
 
 		// 使用改进的事务处理
-		if err := withTransaction(router.GetDB(), func(tx *gorm.DB) error {
+		if err := withTransaction(lb.GetDB(), func(tx *gorm.DB) error {
 			// 删除API密钥
 			if err := tx.Where("model_config_id = ?", model.ID).Delete(&models.APIKey{}).Error; err != nil {
 				return fmt.Errorf("failed to delete API keys: %w", err)
@@ -558,8 +578,8 @@ func handleDeleteModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 		}
 
 		// 刷新缓存
-		if err := router.RefreshData(); err != nil {
-			router.GetLogger().Warnf("Failed to refresh cache after deleting model: %v", err)
+		if err := lb.RefreshData(); err != nil {
+			lb.GetLogger().Warnf("Failed to refresh cache after deleting model: %v", err)
 		}
 
 		c.JSON(200, models.NewSuccessResponse("Model deleted successfully", gin.H{
@@ -569,7 +589,7 @@ func handleDeleteModel(router *core.StatelessModelRouter) gin.HandlerFunc {
 }
 
 // handleCreateAPIKey 处理创建API密钥
-func handleCreateAPIKey(router *core.StatelessModelRouter) gin.HandlerFunc {
+func handleCreateAPIKey(lb *core.LoadBalancer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		modelIDStr := c.Param("model_id")
 
@@ -590,20 +610,36 @@ func handleCreateAPIKey(router *core.StatelessModelRouter) gin.HandlerFunc {
 		}
 
 		var model models.ModelConfig
-		if err := router.GetDB().First(&model, modelID).Error; err != nil {
+		if err := lb.GetDB().First(&model, modelID).Error; err != nil {
 			c.JSON(404, models.NewErrorResponse("Model not found"))
 			return
 		}
 
-		// 检查是否已存在（包括软删除的记录）
-		var existingKey models.APIKey
-		err = router.GetDB().Unscoped().Where("key_value = ? AND model_config_id = ?", requestData.Key, model.ID).First(&existingKey).Error
+		// 🔐 检查是否已存在（由于是非确定性加密，我们需要查出所有 key 并在内存中比对）
+		var allKeys []models.APIKey
+		lb.GetDB().Unscoped().Where("model_config_id = ?", model.ID).Find(&allKeys)
+		
+		var existingKey *models.APIKey
+		for i := range allKeys {
+			decrypted, err := lb.Decrypt(allKeys[i].KeyValue)
+			// 如果解密成功且匹配，或者直接明文匹配（兼容旧数据）
+			if (err == nil && decrypted == requestData.Key) || allKeys[i].KeyValue == requestData.Key {
+				existingKey = &allKeys[i]
+				break
+			}
+		}
 
-		if err == nil {
+		if existingKey != nil {
 			if existingKey.DeletedAt.Valid {
 				// 记录已被软删除，执行恢复操作
 				existingKey.DeletedAt = gorm.DeletedAt{}
-				if err = router.GetDB().Unscoped().Save(&existingKey).Error; err != nil {
+				// 注意：如果原来是明文，这里恢复时顺便加密
+				if !security.IsBase64(existingKey.KeyValue) || len(existingKey.KeyValue) < 20 { // 粗略判断
+					enc, _ := lb.Encrypt(requestData.Key)
+					existingKey.KeyValue = enc
+				}
+
+				if err = lb.GetDB().Unscoped().Save(existingKey).Error; err != nil {
 					c.JSON(500, models.NewErrorResponse("Failed to restore API key: "+err.Error()))
 					return
 				}
@@ -613,36 +649,39 @@ func handleCreateAPIKey(router *core.StatelessModelRouter) gin.HandlerFunc {
 				c.JSON(400, models.NewErrorResponse("API key already exists"))
 				return
 			}
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		} else {
+			// 🔐 加密新密钥
+			encryptedKey, err := lb.Encrypt(requestData.Key)
+			if err != nil {
+				lb.GetLogger().Errorf("[ERROR] CreateAPIKey | Encrypt failed | Error: %v", err)
+				c.JSON(500, models.NewErrorResponse("Failed to encrypt API key"))
+				return
+			}
+
 			// 记录完全不存在，创建新记录
 			apiKey := models.APIKey{
-				KeyValue:      requestData.Key,
+				KeyValue:      encryptedKey,
 				ModelConfigID: model.ID,
 			}
 
-			if err := router.GetDB().Create(&apiKey).Error; err != nil {
-				router.GetLogger().Errorf("[ERROR] CreateAPIKey | Model: %d | Error: %v", model.ID, err)
+			if err := lb.GetDB().Create(&apiKey).Error; err != nil {
+				lb.GetLogger().Errorf("[ERROR] CreateAPIKey | Model: %d | Error: %v", model.ID, err)
 				c.JSON(500, models.NewErrorResponse("Failed to create API key: "+err.Error()))
 				return
 			}
-			router.GetLogger().Infof("[INFO] CreateAPIKey | Model: %d | Success", model.ID)
+			lb.GetLogger().Infof("[INFO] CreateAPIKey | Model: %d | Success", model.ID)
 			c.JSON(200, models.NewSuccessResponse("API key created successfully", apiKey))
-		} else {
-			// 数据库查询错误
-			router.GetLogger().Errorf("[ERROR] CreateAPIKey | Model: %d | Database check failed | Error: %v", model.ID, err)
-			c.JSON(500, models.NewErrorResponse("Failed to check API key: "+err.Error()))
-			return
 		}
 
 		// 刷新缓存
-		if err := router.RefreshData(); err != nil {
-			router.GetLogger().Warnf("Failed to refresh cache after creating API key: %v", err)
+		if err := lb.RefreshData(); err != nil {
+			lb.GetLogger().Warnf("Failed to refresh cache after creating API key: %v", err)
 		}
 	}
 }
 
 // handleDeleteAPIKey 处理删除API密钥
-func handleDeleteAPIKey(router *core.StatelessModelRouter) gin.HandlerFunc {
+func handleDeleteAPIKey(lb *core.LoadBalancer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		keyIDStr := c.Param("key_id")
 
@@ -654,20 +693,20 @@ func handleDeleteAPIKey(router *core.StatelessModelRouter) gin.HandlerFunc {
 		}
 
 		var apiKey models.APIKey
-		if err := router.GetDB().First(&apiKey, keyID).Error; err != nil {
+		if err := lb.GetDB().First(&apiKey, keyID).Error; err != nil {
 			c.JSON(404, models.NewErrorResponse("API key not found"))
 			return
 		}
 
 		// 删除API Key
-		if err := router.GetDB().Delete(&apiKey).Error; err != nil {
+		if err := lb.GetDB().Delete(&apiKey).Error; err != nil {
 			c.JSON(500, models.NewErrorResponse("Failed to delete API key: "+err.Error()))
 			return
 		}
 
 		// 刷新缓存
-		if err := router.RefreshData(); err != nil {
-			router.GetLogger().Warnf("Failed to refresh cache after deleting API key: %v", err)
+		if err := lb.RefreshData(); err != nil {
+			lb.GetLogger().Warnf("Failed to refresh cache after deleting API key: %v", err)
 		}
 
 		c.JSON(200, models.NewSuccessResponse("API key deleted successfully", gin.H{
@@ -677,17 +716,17 @@ func handleDeleteAPIKey(router *core.StatelessModelRouter) gin.HandlerFunc {
 }
 
 // handleStats 处理统计信息
-func handleStats(router *core.StatelessModelRouter) gin.HandlerFunc {
+func handleStats(lb *core.LoadBalancer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		stats := router.GetTotalStats()
+		stats := lb.GetTotalStats()
 		c.JSON(200, models.NewSuccessResponse("Stats retrieved successfully", stats))
 	}
 }
 
 // handleReload 处理配置重载
-func handleReload(router *core.StatelessModelRouter) gin.HandlerFunc {
+func handleReload(lb *core.LoadBalancer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := router.RefreshData(); err != nil {
+		if err := lb.RefreshData(); err != nil {
 			c.JSON(500, models.NewErrorResponse("Failed to reload configuration"))
 			return
 		}
@@ -843,8 +882,8 @@ func handleDeleteAdminKey() gin.HandlerFunc {
 
 // Helper functions
 
-func getGroupIDs(router *core.StatelessModelRouter) []string {
-	groups := router.GetAllModelGroups()
+func getGroupIDs(lb *core.LoadBalancer) []string {
+	groups := lb.GetAllModelGroups()
 	ids := make([]string, 0, len(groups))
 	for _, group := range groups {
 		ids = append(ids, group.GroupID)
@@ -852,3 +891,10 @@ func getGroupIDs(router *core.StatelessModelRouter) []string {
 	return ids
 }
 
+// verifyAdminToken 验证管理员Token中间件 (用于代理接口)
+func verifyAdminToken(lb *core.LoadBalancer) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set("db", lb.GetDB())
+		AdminAuthMiddleware()(c)
+	}
+}

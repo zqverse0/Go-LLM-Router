@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"llm-gateway/core/adapter"
 	"llm-gateway/models"
+	"net/http"
 	"strings"
 	"time"
 
@@ -15,18 +16,19 @@ const (
 	MaxRetries = 3
 )
 
-type ProxyHandlerStateless struct {
-	router      *StatelessModelRouter
+// ProxyHandler 代理请求处理器
+type ProxyHandler struct {
+	lb          *LoadBalancer
+	httpClient  *http.Client
 	logger      *logrus.Logger
 	asyncLogger *AsyncRequestLogger
 }
 
-func NewProxyHandlerStateless(router *StatelessModelRouter, logger *logrus.Logger, asyncLogger *AsyncRequestLogger) *ProxyHandlerStateless {
-	if GlobalHTTPClient == nil {
-		InitHTTPClient()
-	}
-	return &ProxyHandlerStateless{
-		router:      router,
+// NewProxyHandler 创建新的代理处理器
+func NewProxyHandler(lb *LoadBalancer, client *http.Client, logger *logrus.Logger, asyncLogger *AsyncRequestLogger) *ProxyHandler {
+	return &ProxyHandler{
+		lb:          lb,
+		httpClient:  client,
 		logger:      logger,
 		asyncLogger: asyncLogger,
 	}
@@ -45,7 +47,7 @@ func getClientIP(c *gin.Context) string {
 	return c.ClientIP()
 }
 
-func (h *ProxyHandlerStateless) getAdapter(provider string) adapter.ProviderAdapter {
+func (h *ProxyHandler) getAdapter(provider string) adapter.ProviderAdapter {
 	switch strings.ToLower(provider) {
 	case "gemini":
 		return adapter.NewGeminiAdapter()
@@ -54,7 +56,8 @@ func (h *ProxyHandlerStateless) getAdapter(provider string) adapter.ProviderAdap
 	}
 }
 
-func (h *ProxyHandlerStateless) HandleProxyRequest(router *StatelessModelRouter) gin.HandlerFunc {
+// HandleProxyRequest 返回 Gin 处理函数
+func (h *ProxyHandler) HandleProxyRequest() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req models.ChatCompletionRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -62,13 +65,13 @@ func (h *ProxyHandlerStateless) HandleProxyRequest(router *StatelessModelRouter)
 			return
 		}
 
-		// 将路由和执行逻辑下沉到 ProxyRequest 中，以便实现重试循环
-		h.ProxyRequest(c, router, req)
+		// 将路由和执行逻辑下沉到 ProxyRequest 中
+		h.ProxyRequest(c, req)
 	}
 }
 
 // ProxyRequest 处理代理请求 (包含重试逻辑)
-func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, router *StatelessModelRouter, requestData models.ChatCompletionRequest) {
+func (h *ProxyHandler) ProxyRequest(c *gin.Context, requestData models.ChatCompletionRequest) {
 	startTime := time.Now()
 	clientIP := getClientIP(c)
 	requestID := fmt.Sprintf("req_%d", startTime.UnixNano())
@@ -81,7 +84,7 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, router *StatelessMo
 	for i := 0; i < MaxRetries; i++ {
 		// 1. 获取路由 (每次重试都重新获取，以避开已标记为 Cooldown 的 Key)
 		var err error
-		routing, err = router.Route(requestData.Model)
+		routing, err = h.lb.Route(requestData.Model)
 		if err != nil {
 			// 如果连路由都找不到（比如所有 Key 都挂了），直接退出
 			h.logger.Warnf("[Attempt %d] Routing failed: %v", i+1, err)
@@ -104,13 +107,13 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, router *StatelessMo
 		}
 
 		// 4. 发起请求
-		resp, err := GlobalHTTPClient.Do(req)
+		resp, err := h.httpClient.Do(req)
 		
 		// --- 错误处理与状态反馈 ---
 		if err != nil {
 			// 网络层面错误 (DNS, Timeout, Refused)
 			h.logger.Warnf("Upstream network error: %v", err)
-			h.router.keyManager.MarkCooldown(routing.APIKey, 10*time.Second) // 短暂冷却
+			h.lb.keyManager.MarkCooldown(routing.APIKey, 10*time.Second) // 短暂冷却
 			lastErr = err
 			continue // 立即重试
 		}
@@ -121,7 +124,7 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, router *StatelessMo
 		if resp.StatusCode == 429 {
 			resp.Body.Close()
 			h.logger.Warnf("Upstream 429 (Rate Limit). Marking key cooldown.")
-			h.router.keyManager.MarkCooldown(routing.APIKey, 60*time.Second) // 标准冷却
+			h.lb.keyManager.MarkCooldown(routing.APIKey, 60*time.Second) // 标准冷却
 			lastErr = fmt.Errorf("upstream rate limit (429)")
 			continue // 重试
 		}
@@ -130,7 +133,7 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, router *StatelessMo
 		if resp.StatusCode == 401 || resp.StatusCode == 403 {
 			resp.Body.Close()
 			h.logger.Errorf("Upstream Auth Error (%d). Marking key dead.", resp.StatusCode)
-			h.router.keyManager.MarkDead(routing.APIKey) // 永久拉黑
+			h.lb.keyManager.MarkDead(routing.APIKey) // 永久拉黑
 			lastErr = fmt.Errorf("upstream auth error (%d)", resp.StatusCode)
 			continue // 重试
 		}
@@ -139,7 +142,7 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, router *StatelessMo
 		if resp.StatusCode >= 500 {
 			resp.Body.Close()
 			h.logger.Warnf("Upstream Server Error (%d).", resp.StatusCode)
-			h.router.keyManager.MarkCooldown(routing.APIKey, 30*time.Second) // 避开故障节点
+			h.lb.keyManager.MarkCooldown(routing.APIKey, 30*time.Second) // 避开故障节点
 			lastErr = fmt.Errorf("upstream server error (%d)", resp.StatusCode)
 			continue // 重试
 		}

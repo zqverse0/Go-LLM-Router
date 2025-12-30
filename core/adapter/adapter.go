@@ -16,3 +16,11 @@ type ProviderAdapter interface {
 	// HandleResponse 处理上游响应并将其转换为标准响应（支持流式和非流式）
 	HandleResponse(c *gin.Context, resp *http.Response, isStream bool) error
 }
+
+// StreamScanner 通用流式解析接口 (Task 3)
+// 用于统一处理 OpenAI 和 Gemini 的 SSE 响应
+type StreamScanner interface {
+	Scan() bool
+	Bytes() []byte
+	Err() error
+}

@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"llm-gateway/core"
+	"llm-gateway/core/security"
 	"llm-gateway/models"
 	"net/http"
 	"os"
@@ -33,21 +36,45 @@ func main() {
 	}
 
 	// 2. 初始化核心组件
-	// 【Task A】 初始化全局高性能 HTTP Client
-	core.InitHTTPClient()
+	// 创建 HTTP Client (Task 2: Dependency Injection)
+	httpClient := &http.Client{
+		Timeout: 300 * time.Second, // 较长的超时时间以适应 LLM 推理
+		Transport: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 20,
+			IdleConnTimeout:     90 * time.Second,
+		},
+	}
 
 	// 【Task B】 初始化异步日志记录器
 	asyncLogger := core.NewAsyncRequestLogger(db, log)
 	defer asyncLogger.Close() // 确保程序退出时刷新剩余日志
 
-	// 创建无状态模型路由器
-	router, err := core.NewStatelessModelRouter(db, log)
+	// 初始化 SecretProvider (Task 4: Auto-Managed Encryption)
+	secretKey, err := getOrCreateSecretKey("gateway.key")
 	if err != nil {
-		log.Fatal("Failed to create stateless model router:", err)
+		log.Fatalf("Failed to load or generate secret key: %v", err)
 	}
 
-	// 【Task C】 创建无状态代理处理器 (注入异步日志器)
-	proxyHandler := core.NewProxyHandlerStateless(router, log, asyncLogger)
+	sp, err := security.NewAESSecretProvider(secretKey)
+	if err != nil {
+		log.Fatalf("Failed to initialize secret provider: %v", err)
+	}
+	log.Info("🔒 Encryption enabled (using auto-managed key in 'gateway.key')")
+
+	// 创建 LoadBalancer (Task 1 & 2)
+	lb, err := core.NewLoadBalancer(
+		db, 
+		log, 
+		core.GlobalKeyManager, 
+		sp,
+	)
+	if err != nil {
+		log.Fatal("Failed to create load balancer:", err)
+	}
+
+	// 【Task C】 创建代理处理器 (注入依赖)
+	proxyHandler := core.NewProxyHandler(lb, httpClient, log, asyncLogger)
 
 	// 创建Gin引擎
 	if os.Getenv("GIN_MODE") == "release" {
@@ -66,14 +93,15 @@ func main() {
 	api := engine.Group("/")
 	api.Use(RequestLoggerMiddleware(asyncLogger))
 	{
-		api.POST("/v1/chat/completions", verifyAdminToken(router), proxyHandler.HandleProxyRequest(router))
+		// 路由处理逻辑下沉到 ProxyHandler
+		api.POST("/v1/chat/completions", verifyAdminToken(lb), proxyHandler.HandleProxyRequest())
 	}
 
 	// 设置路由
-	setupRoutes(engine, router, proxyHandler)
+	setupRoutes(engine, lb, proxyHandler)
 
 	// 获取端口
-	gatewaySettings := router.GetGatewaySettings()
+	gatewaySettings := lb.GetGatewaySettings()
 	port := gatewaySettings.Port
 	if port == 0 {
 		port = 8000
@@ -146,41 +174,41 @@ func initDatabase(log *logrus.Logger) (*gorm.DB, error) {
 }
 
 // setupRoutes 设置路由
-func setupRoutes(engine *gin.Engine, router *core.StatelessModelRouter, proxyHandler *core.ProxyHandlerStateless) {
+func setupRoutes(engine *gin.Engine, lb *core.LoadBalancer, proxyHandler *core.ProxyHandler) {
 	// 公开路由 - 无需鉴权，无访问日志
-	engine.GET("/", handleRoot(router))
-	engine.GET("/health", handleHealth(router))
+	engine.GET("/", handleRoot(lb))
+	engine.GET("/health", handleHealth(lb))
 	engine.GET("/demo", handleDashboard())
 	engine.GET("/dashboard", handleDashboard())
 
 	// 管理API路由组
 	admin := engine.Group("/admin")
 	admin.Use(func(c *gin.Context) {
-		c.Set("db", router.GetDB())
+		c.Set("db", lb.GetDB())
 		AdminAuthMiddleware()(c)
 	})
 	{
 		// 模型组管理
-		admin.GET("/model-groups", handleListModelGroups(router))
-		admin.POST("/model-groups", handleCreateModelGroup(router))
-		admin.GET("/model-groups/:group_id", handleGetModelGroup(router))
-		admin.PUT("/model-groups/:group_id", handleUpdateModelGroup(router))
-		admin.DELETE("/model-groups/:group_id", handleDeleteModelGroup(router))
+		admin.GET("/model-groups", handleListModelGroups(lb))
+		admin.POST("/model-groups", handleCreateModelGroup(lb))
+		admin.GET("/model-groups/:group_id", handleGetModelGroup(lb))
+		admin.PUT("/model-groups/:group_id", handleUpdateModelGroup(lb))
+		admin.DELETE("/model-groups/:group_id", handleDeleteModelGroup(lb))
 
 		// 模型管理
-		admin.POST("/model-groups/:group_id/models", handleCreateModel(router))
-		admin.PUT("/models/:model_id", handleUpdateModel(router))
-		admin.DELETE("/models/:model_id", handleDeleteModel(router))
+		admin.POST("/model-groups/:group_id/models", handleCreateModel(lb))
+		admin.PUT("/models/:model_id", handleUpdateModel(lb))
+		admin.DELETE("/models/:model_id", handleDeleteModel(lb))
 
 		// API Key管理
-		admin.POST("/models/:model_id/keys", handleCreateAPIKey(router))
-		admin.DELETE("/keys/:key_id", handleDeleteAPIKey(router))
+		admin.POST("/models/:model_id/keys", handleCreateAPIKey(lb))
+		admin.DELETE("/keys/:key_id", handleDeleteAPIKey(lb))
 
 		// 统计信息
-		admin.GET("/stats", handleStats(router))
+		admin.GET("/stats", handleStats(lb))
 
 		// 配置重载
-		admin.POST("/reload", handleReload(router))
+		admin.POST("/reload", handleReload(lb))
 
 		// Admin Key 管理
 		admin.GET("/admin-keys", handleListAdminKeys())
@@ -205,10 +233,44 @@ func corsMiddleware() gin.HandlerFunc {
 	}
 }
 
-// verifyAdminToken 验证管理员Token中间件 (用于代理接口)
-func verifyAdminToken(router *core.StatelessModelRouter) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Set("db", router.GetDB())
-		AdminAuthMiddleware()(c)
+
+// getOrCreateSecretKey 获取或创建持久化的加密密钥
+func getOrCreateSecretKey(filename string) (string, error) {
+	// 1. 尝试读取现有密钥
+	if _, err := os.Stat(filename); err == nil {
+		content, err := os.ReadFile(filename)
+		if err != nil {
+			return "", fmt.Errorf("failed to read key file: %w", err)
+		}
+		key := string(content)
+		if len(key) != 32 {
+			return "", fmt.Errorf("invalid key length in %s: expected 32 bytes, got %d", filename, len(key))
+		}
+		return key, nil
 	}
+
+	// 2. 生成新密钥 (32 bytes for AES-256)
+	// 注意：NewAESSecretProvider 接受的是原始字符串字节，要求 len(key) == 32
+	// 为了避免不可见字符问题，我们生成 16 字节的随机数据并 Hex 编码成 32 字符的字符串
+	// 这样 key 既是 32 字节长，又是纯文本可见的
+	
+	// 这里我们直接生成 32 个随机可见字符可能比较麻烦，
+	// 更简单的做法是生成 32 字节的随机数，但为了方便文件查看，我们生成 16 字节随机数 -> Hex 编码 -> 32 字符
+	randomBytes := make([]byte, 16)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+	
+	// Hex 编码后的长度是 16 * 2 = 32
+	newKey := hex.EncodeToString(randomBytes)
+
+	// 3. 写入文件
+	if err := os.WriteFile(filename, []byte(newKey), 0600); err != nil {
+		return "", fmt.Errorf("failed to write key file: %w", err)
+	}
+
+	fmt.Printf("\n🔑 Generated new encryption key and saved to '%s'\n", filename)
+	fmt.Println("    Do not share this file if you are in production!")
+
+	return newKey, nil
 }

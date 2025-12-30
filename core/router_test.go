@@ -48,57 +48,49 @@ func TestSmartKeyFailover(t *testing.T) {
 		})
 	}
 
-	// 3. 初始化 Router
+	// 3. 初始化 LoadBalancer
 	logger := logrus.New()
 	logger.SetLevel(logrus.DebugLevel)
-	router, err := NewStatelessModelRouter(db, logger)
+	
+	km := NewKeyStateManager()
+	sp := NewNoOpSecretProvider()
+	
+	lb, err := NewLoadBalancer(db, logger, km, sp)
 	assert.NoError(t, err)
 
 	// 4. 设置 Key 状态
 	// Key A -> Cooldown
-	router.keyManager.MarkCooldown("sk-A", 60*time.Second)
+	km.MarkCooldown("sk-A", 60*time.Second)
 	// Key B -> Dead
-	router.keyManager.MarkDead("sk-B")
+	km.MarkDead("sk-B")
 	// Key C -> Normal
 
 	// 5. 验证 Failover
-	// 无论调用多少次，都应该返回 Key C 的索引 (即 2)
-	// 注意：GetInitialKeyIndex 返回的是 Key 在列表中的索引
-	// 数据库中插入顺序是 A(0), B(1), C(2)
+	// 无论调用多少次，都应该返回 Key C
 	
-	// 这里的测试逻辑依赖于 Router 加载 Key 的顺序，通常是 ID 顺序
-	loadedKeys, err := router.GetModelKeys(model.ID)
-	assert.NoError(t, err)
-	assert.Equal(t, "sk-A", loadedKeys[0])
-	assert.Equal(t, "sk-B", loadedKeys[1])
-	assert.Equal(t, "sk-C", loadedKeys[2])
-
-	// 尝试多次获取
 	for i := 0; i < 10; i++ {
-		idx := router.GetInitialKeyIndex(model.ID)
-		assert.Equal(t, 2, idx, "Should always select Key C (index 2)")
+		routing, err := lb.Route(group.GroupID)
+		assert.NoError(t, err)
+		assert.Equal(t, "sk-C", routing.APIKey, "Should always select Key C")
 	}
 
 	// 6. 验证恢复
-	// 清除 A 的 Cooldown
-	router.keyManager.MarkAvailable("sk-A")
+	// 清除 A 的 Cooldown (通过修改时间或直接 MarkAvailable)
+	km.MarkAvailable("sk-A")
 	
 	// 现在应该可以在 A 和 C 之间轮询 (B 仍然 Dead)
-	// Round Robin 可能会从 A 或 C 开始
 	seenA := false
 	seenC := false
 	
-	// 由于 Round Robin 计数器是全局的，我们需要多次调用来覆盖所有情况
 	for i := 0; i < 20; i++ {
-		// 必须调用 GetInitialModelIndex 来推进全局计数器
-		router.GetInitialModelIndex(group.GroupID)
+		routing, err := lb.Route(group.GroupID)
+		assert.NoError(t, err)
 		
-		idx := router.GetInitialKeyIndex(model.ID)
-		if idx == 0 {
+		if routing.APIKey == "sk-A" {
 			seenA = true
-		} else if idx == 2 {
+		} else if routing.APIKey == "sk-C" {
 			seenC = true
-		} else if idx == 1 {
+		} else if routing.APIKey == "sk-B" {
 			t.Fatal("Should never select Dead Key B")
 		}
 	}

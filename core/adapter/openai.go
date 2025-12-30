@@ -7,6 +7,7 @@ import (
 	"io"
 	"llm-gateway/models"
 	"net/http"
+	"net/url"
 
 	"github.com/gin-gonic/gin"
 
@@ -19,7 +20,7 @@ func NewOpenAIAdapter() *OpenAIAdapter {
 	return &OpenAIAdapter{}
 }
 
-func (a *OpenAIAdapter) ConvertRequest(ctx *gin.Context, originalReq models.ChatCompletionRequest, apiKey string, url string, upstreamModel string) (*http.Request, error) {
+func (a *OpenAIAdapter) ConvertRequest(ctx *gin.Context, originalReq models.ChatCompletionRequest, apiKey string, baseURL string, upstreamModel string) (*http.Request, error) {
 	// 关键修复：将请求中的模型名替换为上游识别的名称
 	originalReq.Model = upstreamModel
 	
@@ -29,7 +30,13 @@ func (a *OpenAIAdapter) ConvertRequest(ctx *gin.Context, originalReq models.Chat
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx.Request.Context(), "POST", url, bytes.NewBuffer(reqBodyBytes))
+	// 验证 URL
+	_, err = url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid upstream url: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx.Request.Context(), "POST", baseURL, bytes.NewBuffer(reqBodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

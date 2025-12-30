@@ -8,6 +8,7 @@ import (
 	"io"
 	"llm-gateway/models"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -37,10 +38,10 @@ type GeminiInlineData struct {
 }
 
 type GeminiConfig struct {
-	Temperature     float64 `json:"temperature,omitempty"`
-	TopP            float64 `json:"topP,omitempty"`
-	TopK            int     `json:"topK,omitempty"`
-	MaxOutputTokens int     `json:"maxOutputTokens,omitempty"`
+	Temperature     float64  `json:"temperature,omitempty"`
+	TopP            float64  `json:"topP,omitempty"`
+	TopK            int      `json:"topK,omitempty"`
+	MaxOutputTokens int      `json:"maxOutputTokens,omitempty"`
 	StopSequences   []string `json:"stopSequences,omitempty"`
 }
 
@@ -63,7 +64,7 @@ func NewGeminiAdapter() *GeminiAdapter {
 }
 
 // ConvertRequest 将 OpenAI 请求转换为 Gemini 请求
-func (a *GeminiAdapter) ConvertRequest(ctx *gin.Context, originalReq models.ChatCompletionRequest, apiKey string, url string, upstreamModel string) (*http.Request, error) {
+func (a *GeminiAdapter) ConvertRequest(ctx *gin.Context, originalReq models.ChatCompletionRequest, apiKey string, baseURL string, upstreamModel string) (*http.Request, error) {
 	geminiReq := GeminiRequest{
 		Contents: make([]GeminiContent, 0),
 	}
@@ -164,28 +165,26 @@ func (a *GeminiAdapter) ConvertRequest(ctx *gin.Context, originalReq models.Chat
 		return nil, fmt.Errorf("failed to marshal gemini request: %w", err)
 	}
 
-	// 构造 Gemini URL
-	// 假设 url 是 base url (e.g. https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent)
-	// 需要处理 stream 参数
-	finalURL := url
-	if strings.HasSuffix(finalURL, ":generateContent") && originalReq.Stream {
-		finalURL = strings.Replace(finalURL, ":generateContent", ":streamGenerateContent", 1)
-	}
-	
-	// 添加 Query 参数
-	if strings.Contains(finalURL, "?") {
-		finalURL += "&key=" + apiKey
-	} else {
-		finalURL += "?key=" + apiKey
-	}
-	
-	// 如果是流式，添加 alt=sse (尽管 Gemini API 是 REST json array stream，但有些 client 库支持)
-	// 标准做法是 ?alt=sse
-	if originalReq.Stream {
-		finalURL += "&alt=sse"
+	// 安全的 URL 构建
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid upstream url: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx.Request.Context(), "POST", finalURL, bytes.NewBuffer(reqBodyBytes))
+	// 处理路径：替换 generateContent 为 streamGenerateContent (如果流式)
+	if originalReq.Stream && strings.HasSuffix(u.Path, ":generateContent") {
+		u.Path = strings.Replace(u.Path, ":generateContent", ":streamGenerateContent", 1)
+	}
+
+	// 使用 Query 方法构建参数
+	q := u.Query()
+	q.Set("key", apiKey) // 自动处理 URL 编码
+	if originalReq.Stream {
+		q.Set("alt", "sse")
+	}
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx.Request.Context(), "POST", u.String(), bytes.NewBuffer(reqBodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -249,25 +248,26 @@ func (a *GeminiAdapter) handleNormalResponse(c *gin.Context, resp *http.Response
 	return nil
 }
 
-// handleStreamResponse 处理 Gemini SSE 流式响应
-// Gemini 的 SSE 格式是:
-// data: {"candidates": [...]} 
-func (a *GeminiAdapter) handleStreamResponse(c *gin.Context, resp *http.Response) error {
-	// 设置 SSE 头
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-	c.Status(200)
-	c.Writer.Flush()
+// GeminiStreamScanner 实现 StreamScanner 接口
+type GeminiStreamScanner struct {
+	scanner   *bufio.Scanner
+	requestID string
+	created   int64
+	current   []byte // 当前帧的 OpenAI 格式数据
+	err       error
+}
 
-	scanner := bufio.NewScanner(resp.Body)
-	
-	requestID := fmt.Sprintf("chatcmpl-%d", time.Now().Unix())
-	created := time.Now().Unix()
+func NewGeminiStreamScanner(r io.Reader) *GeminiStreamScanner {
+	return &GeminiStreamScanner{
+		scanner:   bufio.NewScanner(r),
+		requestID: fmt.Sprintf("chatcmpl-%d", time.Now().Unix()),
+		created:   time.Now().Unix(),
+	}
+}
 
-	for scanner.Scan() {
-		line := scanner.Text()
+func (s *GeminiStreamScanner) Scan() bool {
+	for s.scanner.Scan() {
+		line := s.scanner.Text()
 		
 		if !strings.HasPrefix(line, "data: ") {
 			continue
@@ -275,12 +275,11 @@ func (a *GeminiAdapter) handleStreamResponse(c *gin.Context, resp *http.Response
 
 		dataStr := strings.TrimPrefix(line, "data: ")
 		if strings.TrimSpace(dataStr) == "[DONE]" {
-			break
+			return false
 		}
 
 		var geminiResp GeminiResponse
 		if err := json.Unmarshal([]byte(dataStr), &geminiResp); err != nil {
-			// 如果解析失败，可能是 keep-alive 或者其他数据，忽略
 			continue
 		}
 
@@ -294,15 +293,15 @@ func (a *GeminiAdapter) handleStreamResponse(c *gin.Context, resp *http.Response
 			if content != "" {
 				// 构造 OpenAI Delta
 				chunk := models.ChatCompletionResponse{
-					ID:      requestID,
+					ID:      s.requestID,
 					Object:  "chat.completion.chunk",
-					Created: created,
+					Created: s.created,
 					Model:   "gemini-pro",
 					Choices: []models.ChatCompletionChoice{
 						{
 							Index: 0,
 							Delta: models.ChatMessage{
-								Role:    "assistant", // 通常只在第一帧发送，这里简化
+								Role:    "assistant",
 								Content: content,
 							},
 							FinishReason: "",
@@ -311,31 +310,48 @@ func (a *GeminiAdapter) handleStreamResponse(c *gin.Context, resp *http.Response
 				}
 				
 				chunkBytes, _ := json.Marshal(chunk)
-				fmt.Fprintf(c.Writer, "data: %s\n\n", chunkBytes)
-				c.Writer.Flush()
-			}
-			
-			// 检查是否结束
-			if candidate.FinishReason != "" && candidate.FinishReason != "STOP" {
-				// 发送结束帧
-				endChunk := models.ChatCompletionResponse{
-					ID:      requestID,
-					Object:  "chat.completion.chunk",
-					Created: created,
-					Model:   "gemini-pro",
-					Choices: []models.ChatCompletionChoice{
-						{
-							Index: 0,
-							Delta: models.ChatMessage{},
-							FinishReason: strings.ToLower(candidate.FinishReason),
-						},
-					},
-				}
-				chunkBytes, _ := json.Marshal(endChunk)
-				fmt.Fprintf(c.Writer, "data: %s\n\n", chunkBytes)
-				c.Writer.Flush()
+				// 格式化为 SSE 消息
+				s.current = []byte(fmt.Sprintf("data: %s\n\n", chunkBytes))
+				return true
 			}
 		}
+	}
+	if s.scanner.Err() != nil {
+		s.err = s.scanner.Err()
+	}
+	return false
+}
+
+func (s *GeminiStreamScanner) Bytes() []byte {
+	return s.current
+}
+
+func (s *GeminiStreamScanner) Err() error {
+	return s.err
+}
+
+// handleStreamResponse 处理 Gemini SSE 流式响应
+func (a *GeminiAdapter) handleStreamResponse(c *gin.Context, resp *http.Response) error {
+	// 设置 SSE 头
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(200)
+	c.Writer.Flush()
+
+	// 使用 Scanner 接口
+	var scanner StreamScanner = NewGeminiStreamScanner(resp.Body)
+
+	for scanner.Scan() {
+		if _, err := c.Writer.Write(scanner.Bytes()); err != nil {
+			return err
+		}
+		c.Writer.Flush()
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
 	}
 
 	fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
