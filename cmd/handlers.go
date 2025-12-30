@@ -846,8 +846,8 @@ func handleDeleteAdminKey() gin.HandlerFunc {
 func getGroupIDs(router *core.StatelessModelRouter) []string {
 	groups := router.GetAllModelGroups()
 	ids := make([]string, 0, len(groups))
-	for groupID := range groups {
-		ids = append(ids, groupID)
+	for _, group := range groups {
+		ids = append(ids, group.GroupID)
 	}
 	return ids
 }

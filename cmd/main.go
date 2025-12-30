@@ -207,5 +207,8 @@ func corsMiddleware() gin.HandlerFunc {
 
 // verifyAdminToken 验证管理员Token中间件 (用于代理接口)
 func verifyAdminToken(router *core.StatelessModelRouter) gin.HandlerFunc {
-	return AdminAuthMiddleware() // 复用统一的 Auth Middleware
+	return func(c *gin.Context) {
+		c.Set("db", router.GetDB())
+		AdminAuthMiddleware()(c)
+	}
 }

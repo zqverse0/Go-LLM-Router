@@ -1,0 +1,5 @@
+{"level":"info","msg":"Database initialized successfully","time":"2025-12-30T14:19:01+08:00"}
+{"level":"info","msg":"Loaded 5 model groups (stateless mode)","time":"2025-12-30T14:19:01+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2025-12-30T14:19:01+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api.deepseek.com/chat/completions (deepseek-chat) | Key: ...d808","time":"2025-12-30T14:19:02+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent (gemini-pro) | Key: ...-key","time":"2025-12-30T14:19:05+08:00"}

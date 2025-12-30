@@ -7,9 +7,9 @@ import (
 	"io"
 	"llm-gateway/models"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
+
 )
 
 // OpenAIAdapter OpenAI 协议（透传模式）
@@ -19,7 +19,10 @@ func NewOpenAIAdapter() *OpenAIAdapter {
 	return &OpenAIAdapter{}
 }
 
-func (a *OpenAIAdapter) ConvertRequest(ctx *gin.Context, originalReq models.ChatCompletionRequest, apiKey string, url string) (*http.Request, error) {
+func (a *OpenAIAdapter) ConvertRequest(ctx *gin.Context, originalReq models.ChatCompletionRequest, apiKey string, url string, upstreamModel string) (*http.Request, error) {
+	// 关键修复：将请求中的模型名替换为上游识别的名称
+	originalReq.Model = upstreamModel
+	
 	// 直接序列化原始请求
 	reqBodyBytes, err := json.Marshal(originalReq)
 	if err != nil {

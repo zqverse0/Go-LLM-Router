@@ -85,12 +85,12 @@ func RequestLoggerMiddleware(asyncLogger *core.AsyncRequestLogger) gin.HandlerFu
 
 		if asyncLogger != nil && (statusCode >= 400 || strings.HasPrefix(c.Request.URL.Path, "/admin")) {
 			logEntry := &models.RequestLog{
-				Time:       start,
+				CreatedAt:  start,
 				Method:     c.Request.Method,
 				Path:       c.Request.URL.Path,
-				Status:     statusCode,
-				LatencyMs:  float64(latency.Milliseconds()),
-				ClientIP:   clientIP,
+				StatusCode: statusCode,
+				Duration:   latency.Milliseconds(),
+				IP:         clientIP,
 				UserAgent:  c.Request.UserAgent(),
 			}
 			if statusCode >= 400 && len(bodyBytes) > 0 {

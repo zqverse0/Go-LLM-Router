@@ -1,14 +1,9 @@
 package core
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
 	"llm-gateway/core/adapter"
 	"llm-gateway/models"
-	"net"
-	"net/http"
 	"strings"
 	"time"
 
@@ -16,19 +11,20 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// ProxyHandlerStateless 无状态代理处理器
+const (
+	MaxRetries = 3
+)
+
 type ProxyHandlerStateless struct {
 	router      *StatelessModelRouter
 	logger      *logrus.Logger
 	asyncLogger *AsyncRequestLogger
 }
 
-// NewProxyHandlerStateless 创建新的无状态代理处理器
 func NewProxyHandlerStateless(router *StatelessModelRouter, logger *logrus.Logger, asyncLogger *AsyncRequestLogger) *ProxyHandlerStateless {
 	if GlobalHTTPClient == nil {
 		InitHTTPClient()
 	}
-
 	return &ProxyHandlerStateless{
 		router:      router,
 		logger:      logger,
@@ -36,7 +32,6 @@ func NewProxyHandlerStateless(router *StatelessModelRouter, logger *logrus.Logge
 	}
 }
 
-// getClientIP 获取客户端真实IP地址
 func getClientIP(c *gin.Context) string {
 	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
 		if idx := strings.Index(xff, ","); idx != -1 {
@@ -47,207 +42,163 @@ func getClientIP(c *gin.Context) string {
 	if xri := c.GetHeader("X-Real-IP"); xri != "" {
 		return strings.TrimSpace(xri)
 	}
-	if ip, _, err := net.SplitHostPort(c.Request.RemoteAddr); err == nil {
-		return ip
-	}
-	return c.Request.RemoteAddr
+	return c.ClientIP()
 }
 
-// getAdapter 根据提供商获取适配器
 func (h *ProxyHandlerStateless) getAdapter(provider string) adapter.ProviderAdapter {
 	switch strings.ToLower(provider) {
 	case "gemini":
 		return adapter.NewGeminiAdapter()
-	case "openai":
-		return adapter.NewOpenAIAdapter()
 	default:
 		return adapter.NewOpenAIAdapter()
 	}
 }
 
-// ProxyRequest 处理代理请求 - 重构为使用 Adapter 和 GlobalClient
-func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.RoutingInfo, requestData models.ChatCompletionRequest) {
-	startTime := time.Now()
-	clientIP := getClientIP(c)
-	requestID := fmt.Sprintf("%d", startTime.UnixNano())
-
-	reqLog := &models.RequestLog{
-		RequestID:  requestID,
-		Time:       startTime,
-		Method:     c.Request.Method,
-		Path:       c.Request.URL.Path,
-		ClientIP:   clientIP,
-		ModelGroup: routing.GroupID,
-	}
-
-	h.logger.Infof("🚀 Request: ID=%s | Model=%s | IP=%s | Stream=%v", requestID, routing.GroupID, clientIP, requestData.Stream)
-
-	group, err := h.router.GetModelGroup(routing.GroupID)
-	if err != nil {
-		h.logger.Errorf("Failed to get model group %s: %v", routing.GroupID, err)
-		h.sendFinalErrorResponse(c, 404, nil, fmt.Errorf("model group '%s' not found", routing.GroupID))
-		return
-	}
-
-	maxAttempts := h.router.CalculateMaxRetries(routing.GroupID)
-	
-	var modelCursor, keyCursor int
-	hasAvailableKeys := false
-	for _, model := range group.Models {
-		if keys, err := h.router.GetModelKeys(model.ID); err == nil && len(keys) > 0 {
-			hasAvailableKeys = true
-			break
-		}
-	}
-	if !hasAvailableKeys {
-		h.sendFinalErrorResponse(c, 503, nil, fmt.Errorf("no models in group '%s' have API keys configured", routing.GroupID))
-		return
-	}
-
-	if routing.IsPinned && routing.ModelIndex != nil {
-		if *routing.ModelIndex >= 0 && *routing.ModelIndex < len(group.Models) {
-			modelCursor = *routing.ModelIndex
-			keyCursor = 0
-		} else {
-			h.sendFinalErrorResponse(c, 400, nil, fmt.Errorf("model index out of bounds"))
-			return
-		}
-	} else {
-		modelCursor = h.router.GetInitialModelIndex(routing.GroupID)
-		if len(group.Models) > 0 {
-			initialModel := group.Models[modelCursor%len(group.Models)]
-			keyCursor = h.router.GetInitialKeyIndex(initialModel.ID)
-		}
-	}
-
-	for attempt := 0; attempt < maxAttempts; attempt++ {
-		selectedModelIndex := modelCursor % len(group.Models)
-		selectedModel := group.Models[selectedModelIndex]
-
-		modelKeys, err := h.router.GetModelKeys(selectedModel.ID)
-		if err != nil || len(modelKeys) == 0 {
-			if routing.IsPinned {
-				h.sendFinalErrorResponse(c, 503, nil, fmt.Errorf("pinned model has no keys"))
-				return
-			}
-			h.advanceCursors(&modelCursor, &keyCursor, len(group.Models), 0, routing.IsPinned, group.Strategy)
-			continue
-		}
-
-		selectedKeyIndex := keyCursor % len(modelKeys)
-		selectedKey := modelKeys[selectedKeyIndex]
-		
-		// 【Task 2】 检查 Key 是否可用
-		if !h.router.keyManager.IsAvailable(selectedKey) {
-			h.logger.Warnf("🚫 Skipping cooldown/dead key: %s", MaskKey(selectedKey))
-			h.advanceCursors(&modelCursor, &keyCursor, len(group.Models), len(modelKeys), routing.IsPinned, group.Strategy)
-			continue
-		}
-
-		targetURL := strings.TrimSpace(selectedModel.UpstreamURL)
-		h.logger.Infof("🎯 Attempt %d/%d: Using [%s] (%s) -> %s", attempt+1, maxAttempts, selectedModel.UpstreamModel, selectedModel.ProviderName, targetURL)
-
-		providerAdapter := h.getAdapter(selectedModel.ProviderName)
-		req, err := providerAdapter.ConvertRequest(c, requestData, selectedKey, targetURL)
-		
-		if err != nil {
-			h.logger.Errorf("Adapter conversion failed: %v", err)
-			h.advanceCursors(&modelCursor, &keyCursor, len(group.Models), len(modelKeys), routing.IsPinned, group.Strategy)
-			continue
-		}
-
-		resp, err := GlobalHTTPClient.Do(req)
-		latency := time.Since(startTime).Seconds() * 1000 // ms
-
-		if err != nil {
-			h.logger.Warnf("⚠️ Attempt %d Failed: Network error - %v", attempt+1, err)
-			h.advanceCursors(&modelCursor, &keyCursor, len(group.Models), len(modelKeys), routing.IsPinned, group.Strategy)
-			continue
-		}
-
-		reqLog.ModelID = selectedModel.UpstreamModel
-		reqLog.Provider = selectedModel.ProviderName
-		reqLog.LatencyMs = latency
-		reqLog.Status = resp.StatusCode
-
-		if resp.StatusCode == 200 {
-			h.router.UpdateStats(routing.GroupID, selectedModelIndex, true, latency)
-			
-			if err := providerAdapter.HandleResponse(c, resp, requestData.Stream); err != nil {
-				h.logger.Errorf("Response handling failed: %v", err)
-			}
-			
-			resp.Body.Close()
-			if h.asyncLogger != nil {
-				h.asyncLogger.Log(reqLog)
-			}
-			return
-		} else {
-			h.router.UpdateStats(routing.GroupID, selectedModelIndex, false, latency)
-			
-			// 【Task 2】 上报 Key 状态
-			h.router.ReportKeyStatus(selectedKey, resp.StatusCode)
-
-			errorBody, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			reqLog.ErrorMsg = string(errorBody)
-
-			if h.router.IsHardError(resp.StatusCode, nil) {
-				h.skipToNextModel(&modelCursor, &keyCursor, len(group.Models), routing.IsPinned, group.Strategy)
-			} else {
-				h.advanceCursors(&modelCursor, &keyCursor, len(group.Models), len(modelKeys), routing.IsPinned, group.Strategy)
-			}
-		}
-	}
-
-	h.sendFinalErrorResponse(c, 502, nil, fmt.Errorf("all attempts failed"))
-	
-	reqLog.Status = 502
-	reqLog.ErrorMsg = "All attempts failed"
-	if h.asyncLogger != nil {
-		h.asyncLogger.Log(reqLog)
-	}
-}
-
-func (h *ProxyHandlerStateless) sendFinalErrorResponse(c *gin.Context, statusCode int, resp *http.Response, err error) {
-	c.JSON(statusCode, gin.H{
-		"error": gin.H{
-			"message": err.Error(),
-			"type":    "service_unavailable",
-		},
-	})
-}
-
-func (h *ProxyHandlerStateless) advanceCursors(modelCursor, keyCursor *int, totalModels, totalKeys int, isPinned bool, strategy string) bool {
-	if *keyCursor < totalKeys-1 {
-		*keyCursor++
-		return true
-	}
-	if isPinned {
-		return false
-	}
-	*modelCursor++
-	*keyCursor = 0
-	return *modelCursor < totalModels || strategy == "round_robin"
-}
-
-func (h *ProxyHandlerStateless) skipToNextModel(modelCursor, keyCursor *int, totalModels int, isPinned bool, strategy string) bool {
-	if isPinned {
-		return false
-	}
-	*modelCursor++
-	*keyCursor = 0
-	return *modelCursor < totalModels || strategy == "round_robin"
-}
-
 func (h *ProxyHandlerStateless) HandleProxyRequest(router *StatelessModelRouter) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var requestData models.ChatCompletionRequest
-		if err := c.ShouldBindJSON(&requestData); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid JSON"})
+		var req models.ChatCompletionRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid request body"})
 			return
 		}
-		routing := h.router.ParseModelRouting(requestData.Model)
-		h.ProxyRequest(c, routing, requestData)
+
+		// 将路由和执行逻辑下沉到 ProxyRequest 中，以便实现重试循环
+		h.ProxyRequest(c, router, req)
 	}
+}
+
+// ProxyRequest 处理代理请求 (包含重试逻辑)
+func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, router *StatelessModelRouter, requestData models.ChatCompletionRequest) {
+	startTime := time.Now()
+	clientIP := getClientIP(c)
+	requestID := fmt.Sprintf("req_%d", startTime.UnixNano())
+
+	var lastErr error
+	var finalRespStatusCode int
+	var routing *models.RoutingInfo
+	
+	// --- 重试循环 ---
+	for i := 0; i < MaxRetries; i++ {
+		// 1. 获取路由 (每次重试都重新获取，以避开已标记为 Cooldown 的 Key)
+		var err error
+		routing, err = router.Route(requestData.Model)
+		if err != nil {
+			// 如果连路由都找不到（比如所有 Key 都挂了），直接退出
+			h.logger.Warnf("[Attempt %d] Routing failed: %v", i+1, err)
+			lastErr = err
+			break
+		}
+
+		h.logger.Infof("[Attempt %d] Selected upstream: %s (%s) | Key: ...%s", 
+			i+1, routing.UpstreamURL, routing.UpstreamModel,  safeKeyMask(routing.APIKey))
+
+		// 2. 获取适配器
+		adp := h.getAdapter(routing.Provider)
+		
+		// 3. 转换请求
+		req, err := adp.ConvertRequest(c, requestData, routing.APIKey, routing.UpstreamURL, routing.UpstreamModel)
+		if err != nil {
+			h.logger.Errorf("Request conversion failed: %v", err)
+			c.JSON(500, gin.H{"error": "Internal Adapter Error"})
+			return // 内部错误不重试
+		}
+
+		// 4. 发起请求
+		resp, err := GlobalHTTPClient.Do(req)
+		
+		// --- 错误处理与状态反馈 ---
+		if err != nil {
+			// 网络层面错误 (DNS, Timeout, Refused)
+			h.logger.Warnf("Upstream network error: %v", err)
+			h.router.keyManager.MarkCooldown(routing.APIKey, 10*time.Second) // 短暂冷却
+			lastErr = err
+			continue // 立即重试
+		}
+		
+		finalRespStatusCode = resp.StatusCode
+
+		// 429 Too Many Requests
+		if resp.StatusCode == 429 {
+			resp.Body.Close()
+			h.logger.Warnf("Upstream 429 (Rate Limit). Marking key cooldown.")
+			h.router.keyManager.MarkCooldown(routing.APIKey, 60*time.Second) // 标准冷却
+			lastErr = fmt.Errorf("upstream rate limit (429)")
+			continue // 重试
+		}
+
+		// 401/403 Auth Error
+		if resp.StatusCode == 401 || resp.StatusCode == 403 {
+			resp.Body.Close()
+			h.logger.Errorf("Upstream Auth Error (%d). Marking key dead.", resp.StatusCode)
+			h.router.keyManager.MarkDead(routing.APIKey) // 永久拉黑
+			lastErr = fmt.Errorf("upstream auth error (%d)", resp.StatusCode)
+			continue // 重试
+		}
+
+		// 5xx Server Error (Optional: 可以选择重试)
+		if resp.StatusCode >= 500 {
+			resp.Body.Close()
+			h.logger.Warnf("Upstream Server Error (%d).", resp.StatusCode)
+			h.router.keyManager.MarkCooldown(routing.APIKey, 30*time.Second) // 避开故障节点
+			lastErr = fmt.Errorf("upstream server error (%d)", resp.StatusCode)
+			continue // 重试
+		}
+
+		// --- 成功 (200 OK 或其他非重试状态码) ---
+		defer resp.Body.Close()
+		
+		// 处理响应
+		err = adp.HandleResponse(c, resp, requestData.Stream)
+		if err != nil {
+			h.logger.Errorf("Failed to handle response: %v", err)
+		}
+		
+		// 记录日志并退出
+		recordLog(h.asyncLogger, requestID, c, clientIP, startTime, routing, resp.StatusCode)
+		return
+	}
+
+	// --- 重试耗尽 ---
+	h.logger.Errorf("All %d retries failed. Last error: %v", MaxRetries, lastErr)
+	c.JSON(502, gin.H{
+		"error": fmt.Sprintf("Upstream unavailable after %d retries. Last error: %v", MaxRetries, lastErr),
+	})
+	
+	// 记录失败日志
+	recordLog(h.asyncLogger, requestID, c, clientIP, startTime, routing, finalRespStatusCode)
+}
+
+func safeKeyMask(k string) string {
+	if len(k) < 8 {
+		return "***"
+	}
+	return k[len(k)-4:]
+}
+
+func recordLog(logger *AsyncRequestLogger, reqID string, c *gin.Context, ip string, start time.Time, routing *models.RoutingInfo, status int) {
+	if logger == nil {
+		return
+	}
+	group := ""
+	model := ""
+	provider := ""
+	if routing != nil {
+		group = routing.GroupID
+		model = routing.UpstreamModel
+		provider = routing.Provider
+	}
+	
+	logger.Log(&models.RequestLog{
+		RequestID:        reqID,
+		CreatedAt:        start,
+		Method:           c.Request.Method,
+		Path:             c.Request.URL.Path,
+		StatusCode:       status,
+		Duration:         time.Since(start).Milliseconds(),
+		IP:               ip,
+		ModelGroup:       group,
+		UsedModel:        model,
+		Provider:         provider,
+		UserAgent:        c.Request.UserAgent(),
+	})
 }

@@ -76,29 +76,31 @@ type ModelStats struct {
 
 // RequestLog 请求日志 (New for Async Logging)
 type RequestLog struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	RequestID   string    `gorm:"index" json:"request_id"`
-	Time        time.Time `gorm:"index" json:"time"`
-	Method      string    `json:"method"`
-	Path        string    `json:"path"`
-	Status      int       `json:"status"`
-	LatencyMs   float64   `json:"latency_ms"`
-	ClientIP    string    `json:"client_ip"`
-	ModelGroup  string    `json:"model_group"`
-	ModelID     string    `json:"model_id"` // Upstream Model
-	Provider    string    `json:"provider"`
-	TokensIn    int       `json:"tokens_in"`
-	TokensOut   int       `json:"tokens_out"`
-	UserAgent   string    `json:"user_agent"`
-	ErrorMsg    string    `json:"error_msg,omitempty"`
+	ID               uint      `gorm:"primaryKey" json:"id"`
+	RequestID        string    `gorm:"index" json:"request_id"`
+	CreatedAt        time.Time `gorm:"index" json:"created_at"`
+	Method           string    `json:"method"`
+	Path             string    `json:"path"`
+	StatusCode       int       `json:"status_code"`
+	Duration         int64     `json:"duration"` // 毫秒
+	IP               string    `json:"ip"`
+	UserAgent        string    `json:"user_agent"`
+	ModelGroup       string    `json:"model_group"`
+	UsedModel        string    `json:"used_model"`
+	Provider         string    `json:"provider"`
+	PromptTokens     int       `json:"prompt_tokens"`
+	CompletionTokens int       `json:"completion_tokens"`
+	ErrorMsg         string    `json:"error_msg,omitempty"`
 }
 
 // RoutingInfo 路由信息（不存储到数据库）
 type RoutingInfo struct {
-	GroupID        string `json:"group_id"`
-	ModelIndex     *int   `json:"model_index,omitempty"`     // nil 表示使用默认策略
-	KeyIndex       *int   `json:"key_index,omitempty"`       // nil 表示使用默认策略
-	IsPinned       bool   `json:"is_pinned"`                 // 是否为锁定模式（定向路由）
+	GroupID       string `json:"group_id"`
+	Provider      string `json:"provider"`
+	UpstreamURL   string `json:"upstream_url"`
+	UpstreamModel string `json:"upstream_model"`
+	APIKey        string `json:"api_key"`
+	Timeout       int    `json:"timeout"`
 }
 
 // AutoMigrate 自动迁移数据库结构

@@ -63,7 +63,7 @@ func NewGeminiAdapter() *GeminiAdapter {
 }
 
 // ConvertRequest 将 OpenAI 请求转换为 Gemini 请求
-func (a *GeminiAdapter) ConvertRequest(ctx *gin.Context, originalReq models.ChatCompletionRequest, apiKey string, url string) (*http.Request, error) {
+func (a *GeminiAdapter) ConvertRequest(ctx *gin.Context, originalReq models.ChatCompletionRequest, apiKey string, url string, upstreamModel string) (*http.Request, error) {
 	geminiReq := GeminiRequest{
 		Contents: make([]GeminiContent, 0),
 	}
@@ -120,7 +120,9 @@ func (a *GeminiAdapter) ConvertRequest(ctx *gin.Context, originalReq models.Chat
 										},
 									})
 								}
-							}
+							} else {
+								// TODO: 处理远程 URL (需要下载或使用 Vertex AI 格式)
+								// 暂时仅支持 Base64
 							}
 						}
 					}
@@ -307,10 +309,6 @@ func (a *GeminiAdapter) handleStreamResponse(c *gin.Context, resp *http.Response
 						},
 					},
 				}
-				
-				// 如果是第一帧，可能不需要 Role? 
-				// OpenAI 规范：第一帧 Role="assistant", Content="", 后续帧 Role="", Content="..."
-				// 这里为了简单，每帧都带 Content，客户端通常能处理
 				
 				chunkBytes, _ := json.Marshal(chunk)
 				fmt.Fprintf(c.Writer, "data: %s\n\n", chunkBytes)
