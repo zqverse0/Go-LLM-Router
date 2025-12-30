@@ -54,7 +54,8 @@ type ChatToolFunction struct {
 
 // ChatToolCall 工具调用
 type ChatToolCall struct {
-	ID       string            `json:"id"`
+	Index    *int              `json:"index,omitempty"`
+	ID       string            `json:"id,omitempty"`
 	Type     string            `json:"type" binding:"required,oneof=function"`
 	Function ChatToolCallFunc  `json:"function"`
 }

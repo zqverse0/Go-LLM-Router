@@ -95,6 +95,11 @@ func main() {
 	{
 		// 路由处理逻辑下沉到 ProxyHandler
 		api.POST("/v1/chat/completions", verifyAdminToken(lb), proxyHandler.HandleProxyRequest())
+		
+		// Inbound Adapters (Reverse Conversion)
+		api.POST("/v1/messages", verifyAdminToken(lb), proxyHandler.HandleClaudeMessage)
+		// Capture "gemini-pro:generateContent" as a single param ":model"
+		api.POST("/v1beta/models/:model", verifyAdminToken(lb), proxyHandler.HandleGeminiGenerateContent)
 	}
 
 	// 设置路由

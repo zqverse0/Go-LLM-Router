@@ -51,6 +51,8 @@ func (h *ProxyHandler) getAdapter(provider string) adapter.ProviderAdapter {
 	switch strings.ToLower(provider) {
 	case "gemini":
 		return adapter.NewGeminiAdapter()
+	case "claude", "anthropic":
+		return adapter.NewClaudeAdapter()
 	default:
 		return adapter.NewOpenAIAdapter()
 	}
