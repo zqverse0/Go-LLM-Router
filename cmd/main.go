@@ -211,6 +211,9 @@ func setupRoutes(engine *gin.Engine, lb *core.LoadBalancer, proxyHandler *core.P
 
 		// 统计信息
 		admin.GET("/stats", handleStats(lb))
+		// 日志查询
+		admin.GET("/logs", handleGetRequestLogs(lb))
+		admin.GET("/system-logs", handleGetSystemLogs())
 
 		// 配置重载
 		admin.POST("/reload", handleReload(lb))

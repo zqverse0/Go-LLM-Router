@@ -1,165 +1,285 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM Gateway Admin Dashboard</title>
+    <title>LLM Gateway Admin</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        // 在开发环境中抑制Tailwind CDN警告
-        if (typeof window !== 'undefined') {
-            const originalConsoleWarn = console.warn;
-            console.warn = function(...args) {
-                if (args[0] && args[0].includes && args[0].includes('should not be used in production')) {
-                    return; // 忽略Tailwind CDN警告
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        border: "hsl(var(--border))",
+                        input: "hsl(var(--input))",
+                        ring: "hsl(var(--ring))",
+                        background: "hsl(var(--background))",
+                        foreground: "hsl(var(--foreground))",
+                        primary: {
+                            DEFAULT: "hsl(var(--primary))",
+                            foreground: "hsl(var(--primary-foreground))",
+                        },
+                        secondary: {
+                            DEFAULT: "hsl(var(--secondary))",
+                            foreground: "hsl(var(--secondary-foreground))",
+                        },
+                        destructive: {
+                            DEFAULT: "hsl(var(--destructive))",
+                            foreground: "hsl(var(--destructive-foreground))",
+                        },
+                        muted: {
+                            DEFAULT: "hsl(var(--muted))",
+                            foreground: "hsl(var(--muted-foreground))",
+                        },
+                        accent: {
+                            DEFAULT: "hsl(var(--accent))",
+                            foreground: "hsl(var(--accent-foreground))",
+                        },
+                        popover: {
+                            DEFAULT: "hsl(var(--popover))",
+                            foreground: "hsl(var(--popover-foreground))",
+                        },
+                        card: {
+                            DEFAULT: "hsl(var(--card))",
+                            foreground: "hsl(var(--card-foreground))",
+                        },
+                    },
+                    borderRadius: {
+                        lg: "var(--radius)",
+                        md: "calc(var(--radius) - 2px)",
+                        sm: "calc(var(--radius) - 4px)",
+                    },
+                    keyframes: {
+                        "accordion-down": {
+                            from: { height: "0" },
+                            to: { height: "var(--radix-accordion-content-height)" },
+                        },
+                        "accordion-up": {
+                            from: { height: "var(--radix-accordion-content-height)" },
+                            to: { height: "0" },
+                        },
+                    },
+                    animation: {
+                        "accordion-down": "accordion-down 0.2s ease-out",
+                        "accordion-up": "accordion-up 0.2s ease-out",
+                    },
                 }
-                return originalConsoleWarn.apply(console, args);
-            };
+            }
         }
     </script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        .modal-backdrop {
-            backdrop-filter: blur(4px);
-            background-color: rgba(0, 0, 0, 0.5);
+    <style type="text/tailwindcss">
+        @layer base {
+            :root {
+                --background: 0 0% 100%;
+                --foreground: 240 10% 3.9%;
+                --card: 0 0% 100%;
+                --card-foreground: 240 10% 3.9%;
+                --popover: 0 0% 100%;
+                --popover-foreground: 240 10% 3.9%;
+                --primary: 240 5.9% 10%;
+                --primary-foreground: 0 0% 98%;
+                --secondary: 240 4.8% 95.9%;
+                --secondary-foreground: 240 5.9% 10%;
+                --muted: 240 4.8% 95.9%;
+                --muted-foreground: 240 3.8% 46.1%;
+                --accent: 240 4.8% 95.9%;
+                --accent-foreground: 240 5.9% 10%;
+                --destructive: 0 84.2% 60.2%;
+                --destructive-foreground: 0 0% 98%;
+                --border: 240 5.9% 90%;
+                --input: 240 5.9% 90%;
+                --ring: 240 5.9% 10%;
+                --radius: 0.5rem;
+            }
+            body {
+                @apply bg-background text-foreground font-sans antialiased selection:bg-primary/10 selection:text-primary;
+            }
         }
-          .fade-in {
-            animation: fadeIn 0.3s ease-in;
+        
+        .animate-in {
+            animation: animateIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
+        @keyframes animateIn {
+            from { opacity: 0; transform: scale(0.98) translateY(4px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
         }
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(255,255,255,.3);
-            border-radius: 50%;
-            border-top-color: #fff;
-            animation: spin 1s ease-in-out infinite;
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
         }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            @apply bg-border rounded-full hover:bg-muted-foreground/50 transition-colors;
         }
     </style>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        function renderIcons() {
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+        }
+    </script>
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="min-h-screen flex flex-col">
+
+    <!-- Network Error Banner -->
+    <div id="networkErrorBanner" class="hidden bg-destructive text-destructive-foreground px-4 py-2 text-center text-sm font-medium z-[100] sticky top-0">
+        <div class="flex items-center justify-center gap-2">
+            <i data-lucide="wifi-off" class="w-4 h-4"></i>
+            <span data-i18n="connection_lost">Connection lost. Is the server running?</span>
+            <button onclick="location.reload()" class="ml-2 underline hover:text-white/80" data-i18n="retry">Retry</button>
+        </div>
+    </div>
+
     <!-- Login Modal -->
-    <div id="loginModal" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 fade-in">
-            <div class="px-6 py-4 border-b">
-                <h3 class="text-xl font-bold flex items-center gap-2">
-                    <i class="fas fa-shield-alt text-blue-600"></i>
-                    Admin Authentication
-                </h3>
-            </div>
-            <form id="loginForm" class="p-6">
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Admin API Key</label>
-                    <input type="password" id="adminKeyInput" required
-                           class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                           placeholder="Enter your admin API key">
+    <div id="loginModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm hidden transition-all duration-200">
+        <div class="bg-card text-card-foreground rounded-xl shadow-2xl w-full max-w-[400px] mx-4 animate-in border p-8">
+            <div class="flex flex-col space-y-2 text-center mb-8">
+                <div class="flex justify-center mb-4">
+                    <div class="p-3 bg-primary text-primary-foreground rounded-xl shadow-lg">
+                        <i data-lucide="shield-check" class="w-8 h-8"></i>
+                    </div>
                 </div>
-                <button type="submit" class="w-full bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 transition flex items-center justify-center gap-2">
-                    <i class="fas fa-sign-in-alt"></i>
-                    <span id="loginButtonText">Login</span>
+                <h3 class="text-2xl font-bold tracking-tight" data-i18n="welcome_back">Welcome Back</h3>
+                <p class="text-sm text-muted-foreground" data-i18n="enter_key">Enter your admin API key to access the gateway.</p>
+            </div>
+            
+            <form id="loginForm" class="space-y-4">
+                <div class="space-y-2">
+                    <div class="relative">
+                        <i data-lucide="key" class="absolute left-3 top-3 w-4 h-4 text-muted-foreground"></i>
+                        <input type="password" id="adminKeyInput" required
+                               class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 pl-9 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all font-mono"
+                               placeholder="sk-...">
+                    </div>
+                </div>
+                <button type="submit" class="inline-flex items-center justify-center w-full rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 shadow-sm">
+                    <span id="loginButtonText" data-i18n="access_dashboard">Access Dashboard</span>
                 </button>
             </form>
+            <div class="mt-6 text-center">
+                 <p class="text-xs text-muted-foreground" data-i18n="no_key_hint">Don't have a key? Check the server logs on startup.</p>
+            </div>
         </div>
     </div>
 
     <!-- Header -->
-    <header class="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg">
-        <div class="container mx-auto px-6 py-6">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="text-3xl font-bold flex items-center gap-3">
-                        <i class="fas fa-rocket"></i>
-                        LLM Gateway Admin Dashboard
-                    </h1>
-                    <p class="mt-2 text-blue-100">Manage your model groups and API keys</p>
+    <header class="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
+        <div class="container mx-auto px-6 h-16 flex items-center justify-between max-w-7xl">
+            <div class="flex items-center gap-2 font-bold text-lg tracking-tight">
+                <div class="w-8 h-8 bg-primary text-primary-foreground rounded-lg flex items-center justify-center shadow-sm">
+                    <i data-lucide="layout-grid" class="w-5 h-5"></i>
                 </div>
-                <div class="flex items-center gap-4">
-                    <button onclick="refreshDashboard()" id="refreshBtn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition flex items-center gap-2">
-                        <i class="fas fa-sync-alt"></i>
-                        Refresh
-                    </button>
-                    <button onclick="showIntegrationModal()" class="bg-purple-500 hover:bg-purple-600 px-4 py-2 rounded-lg transition flex items-center gap-2">
-                        <i class="fas fa-network-wired"></i>
-                        Connect
-                    </button>
-                    <button onclick="showAdminKeysModal()" class="bg-yellow-500 hover:bg-yellow-600 px-4 py-2 rounded-lg transition flex items-center gap-2">
-                        <i class="fas fa-key"></i>
-                        Admin Keys
-                    </button>
-                    <button onclick="showAddGroupModal()" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg transition flex items-center gap-2">
-                        <i class="fas fa-plus"></i>
-                        Add Group
-                    </button>
-                    <button onclick="logout()" class="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg transition flex items-center gap-2">
-                        <i class="fas fa-sign-out-alt"></i>
-                        Logout
-                    </button>
-                </div>
+                <span class="hidden sm:inline-block" data-i18n="app_title">LLM Gateway</span>
+            </div>
+            
+            <div class="flex items-center gap-2">
+                 <button onclick="toggleLanguage()" class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background hover:bg-accent hover:text-accent-foreground h-9 px-3 gap-2 text-muted-foreground hover:text-foreground">
+                    <i data-lucide="languages" class="w-4 h-4"></i>
+                    <span id="currentLang" class="hidden sm:inline">EN</span>
+                </button>
+
+                <div class="h-4 w-px bg-border mx-1"></div>
+
+                <button onclick="refreshDashboard()" id="refreshBtn" class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background hover:bg-accent hover:text-accent-foreground h-9 px-3 gap-2 text-muted-foreground hover:text-foreground">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline" data-i18n="refresh">Refresh</span>
+                </button>
+                
+                 <button onclick="showLogsModal()" class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background hover:bg-accent hover:text-accent-foreground h-9 px-3 gap-2 text-muted-foreground hover:text-foreground">
+                    <i data-lucide="scroll-text" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline" data-i18n="logs">Logs</span>
+                </button>
+                
+                <button onclick="showIntegrationModal()" class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background hover:bg-accent hover:text-accent-foreground h-9 px-3 gap-2 text-muted-foreground hover:text-foreground">
+                    <i data-lucide="cable" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline" data-i18n="connect">Connect</span>
+                </button>
+                
+                <button onclick="showAdminKeysModal()" class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background hover:bg-accent hover:text-accent-foreground h-9 px-3 gap-2 text-muted-foreground hover:text-foreground">
+                    <i data-lucide="key" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline" data-i18n="keys">Keys</span>
+                </button>
+                
+                <button onclick="showAddGroupModal()" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2 gap-2 ml-2 shadow-sm">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline" data-i18n="new_group">New Group</span>
+                </button>
+                
+                <button onclick="logout()" class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background hover:bg-destructive/10 hover:text-destructive h-9 w-9 ml-2" title="Logout">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                </button>
             </div>
         </div>
     </header>
 
     <!-- Main Content -->
-    <main class="container mx-auto px-6 py-8">
+    <main class="flex-1 container mx-auto px-6 py-8 max-w-7xl">
         <!-- Stats Overview -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div class="bg-white rounded-lg shadow p-6">
-                <div class="flex items-center">
-                    <div class="p-3 bg-blue-100 rounded-lg">
-                        <i class="fas fa-layer-group text-blue-600 text-xl"></i>
-                    </div>
-                    <div class="ml-4">
-                        <p class="text-sm text-gray-500">Total Groups</p>
-                        <p class="text-2xl font-bold text-gray-800" id="totalGroups">0</p>
-                    </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="rounded-xl border bg-card text-card-foreground shadow-sm hover:shadow-md transition-shadow">
+                <div class="p-6 flex flex-row items-center justify-between space-y-0 pb-2">
+                    <h3 class="tracking-tight text-sm font-medium text-muted-foreground" data-i18n="total_groups">Total Groups</h3>
+                    <i data-lucide="layers" class="w-4 h-4 text-muted-foreground/50"></i>
+                </div>
+                <div class="p-6 pt-0">
+                    <div class="text-2xl font-bold tracking-tight" id="totalGroups">0</div>
                 </div>
             </div>
-            <div class="bg-white rounded-lg shadow p-6">
-                <div class="flex items-center">
-                    <div class="p-3 bg-green-100 rounded-lg">
-                        <i class="fas fa-server text-green-600 text-xl"></i>
-                    </div>
-                    <div class="ml-4">
-                        <p class="text-sm text-gray-500">Total Models</p>
-                        <p class="text-2xl font-bold text-gray-800" id="totalModels">0</p>
-                    </div>
+            <div class="rounded-xl border bg-card text-card-foreground shadow-sm hover:shadow-md transition-shadow">
+                <div class="p-6 flex flex-row items-center justify-between space-y-0 pb-2">
+                    <h3 class="tracking-tight text-sm font-medium text-muted-foreground" data-i18n="total_models">Total Models</h3>
+                    <i data-lucide="box" class="w-4 h-4 text-muted-foreground/50"></i>
+                </div>
+                <div class="p-6 pt-0">
+                    <div class="text-2xl font-bold tracking-tight" id="totalModels">0</div>
                 </div>
             </div>
-            <div class="bg-white rounded-lg shadow p-6">
-                <div class="flex items-center">
-                    <div class="p-3 bg-yellow-100 rounded-lg">
-                        <i class="fas fa-key text-yellow-600 text-xl"></i>
-                    </div>
-                    <div class="ml-4">
-                        <p class="text-sm text-gray-500">API Keys</p>
-                        <p class="text-2xl font-bold text-gray-800" id="totalKeys">0</p>
-                    </div>
+            <div class="rounded-xl border bg-card text-card-foreground shadow-sm hover:shadow-md transition-shadow">
+                <div class="p-6 flex flex-row items-center justify-between space-y-0 pb-2">
+                    <h3 class="tracking-tight text-sm font-medium text-muted-foreground" data-i18n="active_keys">Active Keys</h3>
+                    <i data-lucide="key" class="w-4 h-4 text-muted-foreground/50"></i>
+                </div>
+                <div class="p-6 pt-0">
+                    <div class="text-2xl font-bold tracking-tight" id="totalKeys">0</div>
                 </div>
             </div>
-            <div class="bg-white rounded-lg shadow p-6">
-                <div class="flex items-center">
-                    <div class="p-3 bg-purple-100 rounded-lg">
-                        <i class="fas fa-chart-line text-purple-600 text-xl"></i>
-                    </div>
-                    <div class="ml-4">
-                        <p class="text-sm text-gray-500">Total Requests</p>
-                        <p class="text-2xl font-bold text-gray-800" id="totalRequests">0</p>
-                    </div>
+            <div class="rounded-xl border bg-card text-card-foreground shadow-sm hover:shadow-md transition-shadow">
+                <div class="p-6 flex flex-row items-center justify-between space-y-0 pb-2">
+                    <h3 class="tracking-tight text-sm font-medium text-muted-foreground" data-i18n="total_requests">Total Requests</h3>
+                    <i data-lucide="activity" class="w-4 h-4 text-muted-foreground/50"></i>
+                </div>
+                <div class="p-6 pt-0">
+                    <div class="text-2xl font-bold tracking-tight" id="totalRequests">0</div>
                 </div>
             </div>
         </div>
 
         <!-- Loading indicator -->
-        <div id="loadingIndicator" class="hidden text-center py-12">
-            <i class="fas fa-spinner fa-spin text-4xl text-blue-600"></i>
-            <p class="mt-4 text-gray-600">Loading data...</p>
+        <div id="loadingIndicator" class="hidden flex flex-col items-center justify-center py-16 text-muted-foreground">
+            <div class="relative">
+                <div class="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
+            </div>
+            <p class="mt-4 text-sm font-medium" data-i18n="syncing">Syncing data...</p>
         </div>
 
         <!-- Groups Container -->
@@ -167,223 +287,290 @@
             <!-- Groups will be dynamically loaded here -->
         </div>
     </main>
+    
+    <footer class="border-t py-6 text-center text-sm text-muted-foreground">
+        <p>LLM Gateway Dashboard &copy; 2025</p>
+    </footer>
 
-    <!-- Add Group Modal -->
-    <div id="addGroupModal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 fade-in">
-            <div class="px-6 py-4 border-b">
-                <h3 class="text-xl font-bold">Add Model Group</h3>
+    <!-- Logs Modal -->
+    <div id="logsModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm hidden">
+        <div class="bg-card text-card-foreground rounded-xl shadow-2xl w-full max-w-5xl mx-4 animate-in border flex flex-col h-[85vh]">
+            <div class="px-6 py-4 border-b flex justify-between items-center bg-muted/20">
+                <div class="flex flex-col gap-0.5">
+                    <h3 class="text-lg font-semibold tracking-tight flex items-center gap-2">
+                        <i data-lucide="scroll-text" class="w-5 h-5 text-primary"></i>
+                        <span data-i18n="logs_viewer">Logs Viewer</span>
+                    </h3>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="refreshCurrentLogs()" class="inline-flex items-center justify-center rounded-md w-8 h-8 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    </button>
+                    <button onclick="closeModal('logsModal')" class="inline-flex items-center justify-center rounded-md w-8 h-8 text-sm font-medium transition-colors hover:bg-destructive hover:text-destructive-foreground">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
             </div>
-            <form id="addGroupForm" class="p-6">
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Group ID</label>
-                        <input type="text" name="group_id" required
-                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                               placeholder="e.g., ai-free-pool">
+            
+            <!-- Tabs -->
+            <div class="flex border-b bg-muted/10 px-6">
+                <button id="tabRequestLogs" onclick="switchLogTab('request')" class="px-4 py-3 text-sm font-medium border-b-2 border-primary text-primary transition-all">
+                    <span data-i18n="request_history">Request History</span>
+                </button>
+                <button id="tabSystemLogs" onclick="switchLogTab('system')" class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-all">
+                    <span data-i18n="system_console">System Console</span>
+                </button>
+            </div>
+
+            <!-- Request Logs Content -->
+            <div id="requestLogsContent" class="flex-1 overflow-auto flex flex-col">
+                <div class="flex-1 overflow-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-muted/50 sticky top-0 z-10 backdrop-blur-sm border-b">
+                            <tr>
+                                <th class="px-4 py-3 text-left font-medium text-muted-foreground w-40" data-i18n="th_time">Time</th>
+                                <th class="px-4 py-3 text-left font-medium text-muted-foreground w-20" data-i18n="th_status">Status</th>
+                                <th class="px-4 py-3 text-left font-medium text-muted-foreground w-24" data-i18n="th_latency">Latency</th>
+                                <th class="px-4 py-3 text-left font-medium text-muted-foreground" data-i18n="th_model">Model</th>
+                                 <th class="px-4 py-3 text-left font-medium text-muted-foreground w-32" data-i18n="th_ip">IP</th>
+                                 <th class="px-4 py-3 text-left font-medium text-muted-foreground w-20" data-i18n="th_reqid">ReqID</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logsList" class="divide-y divide-border"></tbody>
+                    </table>
+                    <div id="logsLoading" class="hidden py-12 text-center text-muted-foreground">
+                        <i data-lucide="loader-2" class="w-6 h-6 animate-spin mx-auto mb-2"></i>
+                        <span data-i18n="loading_logs">Loading logs...</span>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Strategy</label>
-                        <select name="strategy" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                            <option value="fallback">Fallback (Failover)</option>
-                            <option value="round_robin">Round Robin</option>
-                        </select>
+                    <div id="logsEmpty" class="hidden py-12 text-center text-muted-foreground">
+                        <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                        <span data-i18n="no_logs">No logs found.</span>
                     </div>
                 </div>
-                <div class="mt-6 flex justify-end gap-3">
-                    <button type="button" onclick="closeModal('addGroupModal')" class="px-4 py-2 text-gray-600 hover:text-gray-800">Cancel</button>
-                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add Group</button>
+                <div class="p-4 border-t bg-muted/20 flex justify-between items-center">
+                    <span class="text-xs text-muted-foreground" id="logsPaginationInfo">Showing 0-0 of 0</span>
+                    <div class="flex gap-2">
+                        <button id="logsPrevBtn" onclick="prevLogs()" disabled class="px-3 py-1.5 rounded-md text-xs font-medium border bg-background hover:bg-accent disabled:opacity-50 transition-colors" data-i18n="prev">Previous</button>
+                        <button id="logsNextBtn" onclick="nextLogs()" disabled class="px-3 py-1.5 rounded-md text-xs font-medium border bg-background hover:bg-accent disabled:opacity-50 transition-colors" data-i18n="next">Next</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Logs Content -->
+            <div id="systemLogsContent" class="flex-1 overflow-hidden hidden flex flex-col">
+                <div class="bg-zinc-950 text-zinc-300 p-4 font-mono text-[11px] leading-relaxed flex-1 overflow-auto" id="systemLogsTerminal">
+                    <div class="text-zinc-500 italic" data-i18n="reading_file">Reading gateway.log...</div>
+                </div>
+                <div class="p-3 border-t bg-muted/20 flex justify-end">
+                    <p class="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">File: gateway.log</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Group Modal -->
+    <div id="addGroupModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm hidden">
+        <div class="bg-card text-card-foreground rounded-xl shadow-2xl w-full max-w-lg mx-4 animate-in border p-6">
+            <div class="flex flex-col space-y-1.5 text-center sm:text-left mb-6">
+                <h3 class="text-lg font-semibold leading-none tracking-tight" data-i18n="create_group">Create Model Group</h3>
+                <p class="text-sm text-muted-foreground" data-i18n="group_desc">Groups allow you to load balance or failover between multiple models.</p>
+            </div>
+            <form id="addGroupForm" class="space-y-4">
+                <div class="space-y-2">
+                    <label class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70" data-i18n="group_id">Group ID</label>
+                    <input type="text" name="group_id" required
+                           class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                           placeholder="e.g., ai-free-pool">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70" data-i18n="strategy">Strategy</label>
+                    <select name="strategy" class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
+                        <option value="fallback" data-i18n="fallback">Fallback (Failover)</option>
+                        <option value="round_robin" data-i18n="round_robin">Round Robin</option>
+                    </select>
+                </div>
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" onclick="closeModal('addGroupModal')" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2" data-i18n="cancel">Cancel</button>
+                    <button type="submit" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2" data-i18n="create">Create Group</button>
                 </div>
             </form>
         </div>
     </div>
 
     <!-- Add Model Modal -->
-    <div id="addModelModal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 fade-in">
-            <div class="px-6 py-4 border-b">
-                <h3 class="text-xl font-bold">Add Model</h3>
+    <div id="addModelModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm hidden">
+        <div class="bg-card text-card-foreground rounded-xl shadow-2xl w-full max-w-2xl mx-4 animate-in border p-6 max-h-[90vh] overflow-y-auto">
+            <div class="flex flex-col space-y-1.5 mb-6">
+                <h3 class="text-lg font-semibold leading-none tracking-tight" data-i18n="add_model">Add Model</h3>
+                <p class="text-sm text-muted-foreground" data-i18n="model_desc">Configure a new upstream model provider.</p>
             </div>
-            <form id="addModelForm" class="p-6">
+            <form id="addModelForm" class="space-y-4">
                 <input type="hidden" id="addModelGroupId" name="group_id">
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Provider</label>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium leading-none" data-i18n="provider">Provider</label>
                         <select name="provider_name" required
-                                class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                             <option value="openai">OpenAI (Standard)</option>
                             <option value="gemini">Google Gemini</option>
                             <option value="claude">Anthropic Claude</option>
                         </select>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Upstream URL</label>
-                        <input type="url" name="upstream_url" required
-                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                               placeholder="e.g., https://api.openai.com/v1">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Model Name</label>
-                        <input type="text" name="upstream_model" required
-                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                               placeholder="e.g., gpt-3.5-turbo">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Timeout (seconds)</label>
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium leading-none" data-i18n="timeout">Timeout (seconds)</label>
                         <input type="number" name="timeout" value="30" min="1" max="300"
-                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">API Keys (one per line)</label>
-                        <textarea name="keys" rows="3" required
-                                  class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                                  placeholder="sk-...
-sk-..."></textarea>
+                               class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                     </div>
                 </div>
-                <div class="mt-6 flex justify-end gap-3">
-                    <button type="button" onclick="closeModal('addModelModal')" class="px-4 py-2 text-gray-600 hover:text-gray-800">Cancel</button>
-                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add Model</button>
+                <div class="space-y-2">
+                    <label class="text-sm font-medium leading-none" data-i18n="upstream_url">Upstream URL</label>
+                    <input type="url" name="upstream_url" required
+                           class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                           placeholder="e.g., https://api.openai.com/v1">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-sm font-medium leading-none" data-i18n="model_name">Model Name</label>
+                    <input type="text" name="upstream_model" required
+                           class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                           placeholder="e.g., gpt-3.5-turbo">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-sm font-medium leading-none" data-i18n="api_keys">API Keys (one per line)</label>
+                    <textarea name="keys" rows="4" required
+                              class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono"
+                              placeholder="sk-..."></textarea>
+                </div>
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" onclick="closeModal('addModelModal')" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2" data-i18n="cancel">Cancel</button>
+                    <button type="submit" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2" data-i18n="add">Add Model</button>
                 </div>
             </form>
         </div>
     </div>
 
     <!-- Add Key Modal -->
-    <div id="addKeyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 fade-in">
-            <div class="px-6 py-4 border-b">
-                <h3 class="text-xl font-bold">Add API Key</h3>
+    <div id="addKeyModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm hidden">
+        <div class="bg-card text-card-foreground rounded-xl shadow-2xl w-full max-w-md mx-4 animate-in border p-6">
+            <div class="flex flex-col space-y-1.5 mb-6">
+                <h3 class="text-lg font-semibold leading-none tracking-tight" data-i18n="add_key">Add API Key</h3>
             </div>
-            <form id="addKeyForm" class="p-6">
+            <form id="addKeyForm" class="space-y-4">
                 <input type="hidden" id="addKeyModelId" name="model_id">
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">API Key</label>
+                <div class="space-y-2">
+                    <label class="text-sm font-medium leading-none" data-i18n="api_key">API Key</label>
                     <input type="password" name="key" required
-                           class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                           class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 font-mono"
                            placeholder="sk-...">
                 </div>
-                <div class="flex justify-end gap-3">
-                    <button type="button" onclick="closeModal('addKeyModal')" class="px-4 py-2 text-gray-600 hover:text-gray-800">Cancel</button>
-                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add Key</button>
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" onclick="closeModal('addKeyModal')" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2" data-i18n="cancel">Cancel</button>
+                    <button type="submit" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2" data-i18n="add">Add Key</button>
                 </div>
             </form>
         </div>
     </div>
 
     <!-- Admin Keys Modal -->
-    <div id="adminKeysModal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 fade-in">
-            <div class="px-6 py-4 border-b flex justify-between items-center">
-                <h3 class="text-xl font-bold flex items-center gap-2">
-                    <i class="fas fa-key text-yellow-600"></i>
-                    Admin Keys Management
-                </h3>
-                <button onclick="closeModal('adminKeysModal')" class="text-gray-400 hover:text-gray-600">
-                    <i class="fas fa-times text-xl"></i>
+    <div id="adminKeysModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm hidden">
+        <div class="bg-card text-card-foreground rounded-xl shadow-2xl w-full max-w-4xl mx-4 animate-in border flex flex-col max-h-[90vh]">
+            <div class="p-6 border-b flex justify-between items-center">
+                <div class="flex flex-col space-y-1">
+                    <h3 class="text-lg font-semibold leading-none tracking-tight" data-i18n="admin_keys">Admin Keys</h3>
+                    <p class="text-sm text-muted-foreground" data-i18n="admin_keys_desc">Manage access keys for this dashboard.</p>
+                </div>
+                <button onclick="closeModal('adminKeysModal')" class="rounded-md p-2 hover:bg-accent hover:text-accent-foreground">
+                    <i data-lucide="x" class="w-4 h-4"></i>
                 </button>
             </div>
-            <div class="p-6">
-                <div class="mb-6 flex justify-between items-center">
-                    <p class="text-gray-600">Manage your admin API keys for accessing the dashboard</p>
-                    <button onclick="showAddAdminKeyModal()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition flex items-center gap-2">
-                        <i class="fas fa-plus"></i>
-                        Generate New Key
+            <div class="p-6 overflow-y-auto">
+                <div class="mb-4 flex justify-end">
+                    <button onclick="showAddAdminKeyModal()" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-green-600 text-white hover:bg-green-700 h-9 px-4 py-2 gap-2 shadow-sm">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                        <span data-i18n="generate_key">Generate New Key</span>
                     </button>
                 </div>
 
-                <!-- Admin Keys Table -->
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
+                <div class="rounded-md border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead class="bg-muted/50">
                             <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Key Preview</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                <th class="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
+                                <th class="px-4 py-3 text-left font-medium text-muted-foreground" data-i18n="th_name">Name</th>
+                                <th class="px-4 py-3 text-left font-medium text-muted-foreground" data-i18n="th_preview">Key Preview</th>
+                                <th class="px-4 py-3 text-left font-medium text-muted-foreground" data-i18n="th_created">Created</th>
+                                <th class="px-4 py-3 text-left font-medium text-muted-foreground w-[100px]" data-i18n="th_actions">Actions</th>
                             </tr>
                         </thead>
-                        <tbody id="adminKeysList" class="bg-white divide-y divide-gray-200">
-                            <!-- Admin keys will be loaded here -->
+                        <tbody id="adminKeysList" class="divide-y divide-border">
+                            <!-- Admin keys loaded here -->
                         </tbody>
                     </table>
                 </div>
 
-                <div id="noAdminKeys" class="hidden text-center py-8 text-gray-500">
-                    <i class="fas fa-key text-4xl mb-4"></i>
-                    <p>No admin keys found.</p>
+                <div id="noAdminKeys" class="hidden text-center py-12 text-muted-foreground">
+                    <i data-lucide="key" class="w-12 h-12 mx-auto mb-3 opacity-20"></i>
+                    <p data-i18n="no_admin_keys">No admin keys found.</p>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Add Admin Key Modal -->
-    <div id="addAdminKeyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 fade-in">
-            <div class="px-6 py-4 border-b">
-                <h3 class="text-xl font-bold flex items-center gap-2">
-                    <i class="fas fa-key text-green-600"></i>
-                    Generate New Admin Key
-                </h3>
+    <div id="addAdminKeyModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm hidden">
+        <div class="bg-card text-card-foreground rounded-xl shadow-2xl w-full max-w-md mx-4 animate-in border p-6">
+            <div class="flex flex-col space-y-1.5 mb-6">
+                <h3 class="text-lg font-semibold leading-none tracking-tight" data-i18n="new_admin_key">New Admin Key</h3>
             </div>
-            <form id="addAdminKeyForm" class="p-6">
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Key Name</label>
+            <form id="addAdminKeyForm" class="space-y-4">
+                <div class="space-y-2">
+                    <label class="text-sm font-medium leading-none" data-i18n="key_name">Key Name</label>
                     <input type="text" name="name" required
-                           class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                           placeholder="e.g., MacBook Pro, Mobile Device">
+                           class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                           placeholder="e.g., MacBook Pro">
                 </div>
-                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                    <p class="text-sm text-blue-700">
-                        <i class="fas fa-info-circle mr-2"></i>
-                        A new admin key will be generated. Please save it securely as it will only be shown once.
-                    </p>
+                <div class="rounded-md bg-blue-50/50 border border-blue-200 p-3">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i data-lucide="info" class="h-5 w-5 text-blue-500"></i>
+                        </div>
+                        <div class="ml-3 flex-1">
+                            <p class="text-sm text-blue-700" data-i18n="key_hint">The key will only be shown once. Please save it securely.</p>
+                        </div>
+                    </div>
                 </div>
-                <div class="flex justify-end gap-3">
-                    <button type="button" onclick="closeModal('addAdminKeyModal')"
-                            class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition flex items-center gap-2">
-                        <i class="fas fa-times"></i>
-                        Cancel
-                    </button>
-                    <button type="submit"
-                            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition flex items-center gap-2">
-                        <i class="fas fa-key"></i>
-                        Create
-                    </button>
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" onclick="closeModal('addAdminKeyModal')" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2" data-i18n="cancel">Cancel</button>
+                    <button type="submit" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2" data-i18n="create">Create</button>
                 </div>
             </form>
         </div>
     </div>
 
     <!-- New Admin Key Result Modal -->
-    <div id="newAdminKeyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 fade-in">
-            <div class="px-6 py-4 border-b">
-                <h3 class="text-xl font-bold flex items-center gap-2">
-                    <i class="fas fa-check-circle text-green-600"></i>
-                    Admin Key Generated Successfully
-                </h3>
+    <div id="newAdminKeyModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm hidden">
+        <div class="bg-card text-card-foreground rounded-xl shadow-2xl w-full max-w-lg mx-4 animate-in border p-6">
+            <div class="flex flex-col space-y-1.5 mb-6">
+                <div class="flex items-center gap-2 text-green-600 mb-2">
+                    <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+                    <h3 class="text-lg font-semibold leading-none tracking-tight" data-i18n="key_generated">Key Generated</h3>
+                </div>
             </div>
-            <div class="p-6">
-                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <p class="text-sm text-yellow-700 mb-3 font-medium">
-                        <i class="fas fa-exclamation-triangle mr-2"></i>
-                        Please save this key now. It won't be shown again!
-                    </p>
+            <div class="space-y-4">
+                <div class="rounded-md bg-amber-50/50 p-4 border border-amber-200">
+                    <p class="text-sm text-amber-800 font-medium mb-2" data-i18n="save_key_msg">Please save this key now. It won't be shown again!</p>
                     <div class="flex items-center gap-2">
                         <input type="text" id="newAdminKeyValue" readonly
-                               class="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-lg font-mono text-sm"
+                               class="flex-1 h-9 rounded-md border border-amber-200 bg-white px-3 py-1 text-sm font-mono text-amber-900 focus:outline-none"
                                value="">
                         <button onclick="copyToClipboard(document.getElementById('newAdminKeyValue').value, this)"
-                                class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg transition">
-                            <i class="fas fa-copy"></i>
+                                class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-amber-100 text-amber-900 hover:bg-amber-200 h-9 px-3 shadow-sm">
+                            <i data-lucide="copy" class="w-4 h-4"></i>
                         </button>
                     </div>
                 </div>
-                <div class="mt-4 flex justify-end">
+                <div class="flex justify-end pt-2">
                     <button onclick="closeModal('newAdminKeyModal'); loadAdminKeys();"
-                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2" data-i18n="saved_it">
                         I've Saved It
                     </button>
                 </div>
@@ -392,203 +579,211 @@ sk-..."></textarea>
     </div>
 
     <!-- Edit Model Modal -->
-    <div id="editModelModal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 fade-in">
-            <div class="px-6 py-4 border-b">
-                <h3 class="text-xl font-bold">Edit Model</h3>
+    <div id="editModelModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm hidden">
+        <div class="bg-card text-card-foreground rounded-xl shadow-2xl w-full max-w-2xl mx-4 animate-in border p-6">
+            <div class="flex flex-col space-y-1.5 mb-6">
+                <h3 class="text-lg font-semibold leading-none tracking-tight" data-i18n="edit_model">Edit Model</h3>
             </div>
-            <form id="editModelForm" class="p-6">
+            <form id="editModelForm" class="space-y-4">
                 <input type="hidden" id="editModelId" name="id">
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Provider</label>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium leading-none" data-i18n="provider">Provider</label>
                         <select id="editProviderName" name="provider_name" required
-                                class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                             <option value="openai">OpenAI (Standard)</option>
                             <option value="gemini">Google Gemini</option>
                             <option value="claude">Anthropic Claude</option>
                         </select>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Upstream URL</label>
-                        <input type="url" id="editUpstreamUrl" name="upstream_url" required
-                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                               placeholder="e.g., https://api.openai.com/v1">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Model Name</label>
-                        <input type="text" id="editUpstreamModel" name="upstream_model" required
-                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                               placeholder="e.g., gpt-3.5-turbo">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Timeout (seconds)</label>
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium leading-none" data-i18n="timeout">Timeout (seconds)</label>
                         <input type="number" id="editTimeout" name="timeout" min="1" max="300"
-                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                               class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                     </div>
                 </div>
-                <div class="mt-6 flex justify-end gap-3">
-                    <button type="button" onclick="closeModal('editModelModal')" class="px-4 py-2 text-gray-600 hover:text-gray-800">Cancel</button>
-                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Save Changes</button>
+                <div class="space-y-2">
+                    <label class="text-sm font-medium leading-none" data-i18n="upstream_url">Upstream URL</label>
+                    <input type="url" id="editUpstreamUrl" name="upstream_url" required
+                           class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-sm font-medium leading-none" data-i18n="model_name">Model Name</label>
+                    <input type="text" id="editUpstreamModel" name="upstream_model" required
+                           class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                </div>
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" onclick="closeModal('editModelModal')" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2" data-i18n="cancel">Cancel</button>
+                    <button type="submit" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2" data-i18n="save">Save Changes</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Toast Notification -->
-    <div id="toast" class="hidden fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 flex items-center gap-3 fade-in">
-        <i id="toastIcon" class="fas fa-check-circle text-green-500 text-xl"></i>
-        <span id="toastMessage">Success</span>
-    </div>
-
     <!-- Integration Modal -->
-    <div id="integrationModal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 fade-in">
-            <div class="px-6 py-4 border-b flex justify-between items-center bg-gradient-to-r from-purple-50 to-blue-50 rounded-t-lg">
-                <h3 class="text-xl font-bold flex items-center gap-2 text-gray-800">
-                    <i class="fas fa-network-wired text-purple-600"></i>
-                    Client Integration Guide
-                </h3>
-                <button onclick="closeModal('integrationModal')" class="text-gray-400 hover:text-gray-600 transition">
-                    <i class="fas fa-times text-xl"></i>
+    <div id="integrationModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm hidden">
+        <div class="bg-card text-card-foreground rounded-xl shadow-2xl w-full max-w-4xl mx-4 animate-in border flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b flex justify-between items-center bg-muted/20">
+                <div class="flex items-center gap-2">
+                    <div class="p-2 bg-purple-100 text-purple-600 rounded-md">
+                        <i data-lucide="blocks" class="w-5 h-5"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold tracking-tight" data-i18n="integration_guide">Integration Guide</h3>
+                </div>
+                <button onclick="closeModal('integrationModal')" class="rounded-md p-2 hover:bg-accent hover:text-accent-foreground transition">
+                    <i data-lucide="x" class="w-4 h-4"></i>
                 </button>
             </div>
-            <div class="p-6">
-                <p class="text-gray-600 mb-6 text-sm">
-                    Your gateway now supports <strong>Universal Protocol Translation</strong>. You can connect any client to any model configured in this system.
+            <div class="p-6 overflow-y-auto">
+                <p class="text-muted-foreground mb-6 text-sm" data-i18n="integration_desc">
+                    Connect any client to your models using Universal Protocol Translation.
                 </p>
                 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <!-- OpenAI Card -->
-                    <div class="border rounded-xl p-5 bg-white hover:shadow-md transition duration-300 relative overflow-hidden group">
-                        <div class="absolute top-0 right-0 w-16 h-16 bg-green-100 rounded-bl-full -mr-8 -mt-8 z-0"></div>
-                        <h4 class="font-bold text-green-700 mb-3 relative z-10 flex items-center gap-2">
-                            <i class="fas fa-robot"></i> OpenAI Compatible
+                    <div class="border rounded-xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+                        <div class="absolute top-0 right-0 p-4 opacity-10">
+                            <i data-lucide="bot" class="w-16 h-16 text-green-500"></i>
+                        </div>
+                        <h4 class="font-semibold text-green-600 mb-4 flex items-center gap-2">
+                            OpenAI Compatible
                         </h4>
-                        
-                        <div class="space-y-3 relative z-10">
-                            <!-- Base URL -->
+                        <div class="space-y-4 relative z-10">
                             <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-[10px] text-gray-500 font-bold uppercase">Base URL (SDKs)</span>
-                                    <button onclick="copyToClipboard(document.getElementById('baseOpenAIUrl').textContent, this)" class="text-gray-400 hover:text-green-600"><i class="far fa-copy"></i></button>
+                                <div class="flex justify-between items-center mb-1.5">
+                                    <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Base URL</span>
+                                    <button onclick="copyToClipboard(document.getElementById('baseOpenAIUrl').textContent, this)" class="text-muted-foreground hover:text-foreground"><i data-lucide="copy" class="w-3 h-3"></i></button>
                                 </div>
-                                <div class="bg-gray-50 border border-gray-200 rounded p-2 text-[10px] font-mono text-gray-600 break-all" id="baseOpenAIUrl"></div>
-                            </div>
-                            
-                            <!-- Full Endpoint -->
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-[10px] text-gray-500 font-bold uppercase">Chat Endpoint (Direct)</span>
-                                    <button onclick="copyToClipboard(document.getElementById('fullOpenAIUrl').textContent, this)" class="text-gray-400 hover:text-green-600"><i class="far fa-copy"></i></button>
-                                </div>
-                                <div class="bg-gray-900 border border-gray-700 rounded p-2 text-[10px] font-mono text-green-400 break-all shadow-inner" id="fullOpenAIUrl"></div>
+                                <div class="bg-muted/50 border rounded-md p-2 text-[10px] font-mono text-foreground break-all" id="baseOpenAIUrl"></div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Claude Card -->
-                    <div class="border rounded-xl p-5 bg-white hover:shadow-md transition duration-300 relative overflow-hidden group">
-                        <div class="absolute top-0 right-0 w-16 h-16 bg-purple-100 rounded-bl-full -mr-8 -mt-8 z-0"></div>
-                        <h4 class="font-bold text-purple-700 mb-3 relative z-10 flex items-center gap-2">
-                            <i class="fas fa-sparkles"></i> Anthropic Claude
+                    <div class="border rounded-xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+                        <div class="absolute top-0 right-0 p-4 opacity-10">
+                            <i data-lucide="sparkles" class="w-16 h-16 text-purple-500"></i>
+                        </div>
+                        <h4 class="font-semibold text-purple-600 mb-4 flex items-center gap-2">
+                            Anthropic Claude
                         </h4>
-                        
-                        <div class="space-y-3 relative z-10">
-                            <!-- Base URL -->
+                        <div class="space-y-4 relative z-10">
                             <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-[10px] text-gray-500 font-bold uppercase">Base URL (SDKs)</span>
-                                    <button onclick="copyToClipboard(document.getElementById('baseClaudeUrl').textContent, this)" class="text-gray-400 hover:text-purple-600"><i class="far fa-copy"></i></button>
+                                <div class="flex justify-between items-center mb-1.5">
+                                    <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Base URL</span>
+                                    <button onclick="copyToClipboard(document.getElementById('baseClaudeUrl').textContent, this)" class="text-muted-foreground hover:text-foreground"><i data-lucide="copy" class="w-3 h-3"></i></button>
                                 </div>
-                                <div class="bg-gray-50 border border-gray-200 rounded p-2 text-[10px] font-mono text-gray-600 break-all" id="baseClaudeUrl"></div>
-                            </div>
-                            
-                            <!-- Full Endpoint -->
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-[10px] text-gray-500 font-bold uppercase">Messages Endpoint (Direct)</span>
-                                    <button onclick="copyToClipboard(document.getElementById('fullClaudeUrl').textContent, this)" class="text-gray-400 hover:text-purple-600"><i class="far fa-copy"></i></button>
-                                </div>
-                                <div class="bg-gray-900 border border-gray-700 rounded p-2 text-[10px] font-mono text-purple-400 break-all shadow-inner" id="fullClaudeUrl"></div>
+                                <div class="bg-muted/50 border rounded-md p-2 text-[10px] font-mono text-foreground break-all" id="baseClaudeUrl"></div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Gemini Card -->
-                    <div class="border rounded-xl p-5 bg-white hover:shadow-md transition duration-300 relative overflow-hidden group">
-                        <div class="absolute top-0 right-0 w-16 h-16 bg-blue-100 rounded-bl-full -mr-8 -mt-8 z-0"></div>
-                        <h4 class="font-bold text-blue-700 mb-3 relative z-10 flex items-center gap-2">
-                            <i class="fas fa-gem"></i> Google Gemini
+                    <div class="border rounded-xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+                        <div class="absolute top-0 right-0 p-4 opacity-10">
+                            <i data-lucide="gem" class="w-16 h-16 text-blue-500"></i>
+                        </div>
+                        <h4 class="font-semibold text-blue-600 mb-4 flex items-center gap-2">
+                            Google Gemini
                         </h4>
-                        
-                        <div class="space-y-3 relative z-10">
-                            <!-- Base URL -->
+                        <div class="space-y-4 relative z-10">
                             <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-[10px] text-gray-500 font-bold uppercase">Base URL</span>
-                                    <button onclick="copyToClipboard(document.getElementById('baseGeminiUrl').textContent, this)" class="text-gray-400 hover:text-blue-600"><i class="far fa-copy"></i></button>
+                                <div class="flex justify-between items-center mb-1.5">
+                                    <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Base URL</span>
+                                    <button onclick="copyToClipboard(document.getElementById('baseGeminiUrl').textContent, this)" class="text-muted-foreground hover:text-foreground"><i data-lucide="copy" class="w-3 h-3"></i></button>
                                 </div>
-                                <div class="bg-gray-50 border border-gray-200 rounded p-2 text-[10px] font-mono text-gray-600 break-all" id="baseGeminiUrl"></div>
-                            </div>
-                            
-                            <!-- Full Endpoint -->
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-[10px] text-gray-500 font-bold uppercase">Endpoint Pattern</span>
-                                    <button onclick="copyToClipboard(document.getElementById('fullGeminiUrl').textContent, this)" class="text-gray-400 hover:text-blue-600"><i class="far fa-copy"></i></button>
-                                </div>
-                                <div class="bg-gray-900 border border-gray-700 rounded p-2 text-[10px] font-mono text-blue-400 break-all shadow-inner" id="fullGeminiUrl"></div>
+                                <div class="bg-muted/50 border rounded-md p-2 text-[10px] font-mono text-foreground break-all" id="baseGeminiUrl"></div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="mt-6 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg">
-                    <div class="flex">
-                        <div class="flex-shrink-0">
-                            <i class="fas fa-lightbulb text-yellow-500"></i>
-                        </div>
-                        <div class="ml-3">
-                            <p class="text-sm text-yellow-800">
-                                <strong>Pro Tip:</strong> You can use ANY API Key created in "Add Key" for ANY of these protocols. 
-                                The gateway automatically routes requests based on the model name you provide, regardless of the client protocol used.
-                            </p>
-                        </div>
-                    </div>
+                <div class="mt-6 bg-amber-50/50 border border-amber-200 p-4 rounded-lg flex gap-3">
+                    <i data-lucide="lightbulb" class="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5"></i>
+                    <p class="text-sm text-amber-900" data-i18n="pro_tip">
+                        <strong>Pro Tip:</strong> You can use ANY API Key created in "Add Key" for ANY of these protocols. 
+                        The gateway automatically routes requests based on the model name you provide.
+                    </p>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Improved Toast -->
+    <div id="toast" class="fixed bottom-6 right-6 z-[100] hidden transition-all duration-300">
+        <div class="bg-foreground text-background rounded-lg shadow-xl px-4 py-3 flex items-center gap-3 animate-in slide-in-from-right-5 fade-in zoom-in-95">
+            <div id="toastIconContainer"></div>
+            <p id="toastMessage" class="text-sm font-medium pr-2"></p>
+        </div>
+    </div>
+
     <script>
-        // Global state
+        // --- Translations ---
+        const translations = {
+            en: {
+                connection_lost: "Connection lost. Is the server running?",
+                retry: "Retry", welcome_back: "Welcome Back", enter_key: "Enter your admin API key to access the gateway.",
+                access_dashboard: "Access Dashboard", no_key_hint: "Don't have a key? Check the server logs on startup.",
+                app_title: "LLM Gateway", refresh: "Refresh", logs: "Logs", connect: "Connect", keys: "Keys", new_group: "New Group",
+                total_groups: "Total Groups", total_models: "Total Models", active_keys: "Active Keys", total_requests: "Total Requests",
+                syncing: "Syncing data...", request_logs: "Request Logs", logs_desc: "Recent API requests processed by the gateway.",
+                loading_logs: "Loading logs...", no_logs: "No logs found.", th_time: "Time", th_status: "Status", th_latency: "Latency",
+                th_model: "Model", th_ip: "IP", th_reqid: "ReqID", prev: "Previous", next: "Next", create_group: "Create Model Group",
+                group_desc: "Groups allow you to load balance or failover between multiple models.", group_id: "Group ID",
+                strategy: "Strategy", fallback: "Fallback (Failover)", round_robin: "Round Robin", cancel: "Cancel", create: "Create",
+                add_model: "Add Model", model_desc: "Configure a new upstream model provider.", provider: "Provider",
+                timeout: "Timeout (seconds)", upstream_url: "Upstream URL", model_name: "Model Name", api_keys: "API Keys (one per line)",
+                add: "Add", add_key: "Add API Key", api_key: "API Key", admin_keys: "Admin Keys", admin_keys_desc: "Manage access keys for this dashboard.",
+                generate_key: "Generate New Key", th_name: "Name", th_preview: "Key Preview", th_created: "Created", th_actions: "Actions",
+                no_admin_keys: "No admin keys found.", new_admin_key: "New Admin Key", key_name: "Key Name",
+                key_hint: "The key will only be shown once. Please save it securely.", key_generated: "Key Generated",
+                save_key_msg: "Please save this key now. It won't be shown again!", saved_it: "I've Saved It", edit_model: "Edit Model",
+                save: "Save Changes", integration_guide: "Integration Guide", integration_desc: "Connect any client to your models using Universal Protocol Translation.",
+                pro_tip: "<strong>Pro Tip:</strong> You can use ANY API Key created in 'Add Key' for ANY of these protocols. The gateway automatically routes requests based on the model name you provide.",
+                no_groups_title: "No Model Groups", no_groups_desc: "Create a group to start adding models and routing traffic.",
+                create_first_group: "Create First Group", no_models_in_group: "No models in this group.", add_model_btn: "Add Model",
+                logs_viewer: "Logs Viewer", request_history: "Request History", system_console: "System Console", reading_file: "Reading gateway.log..."
+            },
+            zh: {
+                connection_lost: "连接丢失。服务器是否正在运行？",
+                retry: "重试", welcome_back: "欢迎回来", enter_key: "输入管理员 API 密钥以访问网关。",
+                access_dashboard: "访问仪表板", no_key_hint: "没有密钥？请检查启动时的服务器日志。",
+                app_title: "LLM 网关", refresh: "刷新", logs: "日志", connect: "连接", keys: "密钥", new_group: "新建组",
+                total_groups: "模型组总数", total_models: "模型总数", active_keys: "有效密钥", total_requests: "请求总数",
+                syncing: "正在同步数据...", request_logs: "请求日志", logs_desc: "网关最近处理的 API 请求。",
+                loading_logs: "正在加载日志...", no_logs: "未找到日志。", th_time: "时间", th_status: "状态", th_latency: "耗时",
+                th_model: "模型", th_ip: "IP", th_reqid: "请求ID", prev: "上一页", next: "下一页", create_group: "创建模型组",
+                group_desc: "模型组允许您在多个模型之间进行负载均衡或故障转移。", group_id: "组 ID", strategy: "策略",
+                fallback: "故障转移 (Fallback)", round_robin: "轮询 (Round Robin)", cancel: "取消", create: "创建",
+                add_model: "添加模型", model_desc: "配置新的上游模型提供商。", provider: "提供商", timeout: "超时 (秒)",
+                upstream_url: "上游 URL", model_name: "模型名称", api_keys: "API 密钥 (每行一个)", add: "添加",
+                add_key: "添加 API 密钥", api_key: "API 密钥", admin_keys: "管理员密钥", admin_keys_desc: "管理此仪表板的访问密钥。",
+                generate_key: "生成新密钥", th_name: "名称", th_preview: "密钥预览", th_created: "创建时间", th_actions: "操作",
+                no_admin_keys: "未找到管理员密钥。", new_admin_key: "新管理员密钥", key_name: "密钥名称",
+                key_hint: "密钥仅显示一次，请妥善保存。", key_generated: "密钥已生成",
+                save_key_msg: "请立即保存此密钥，它将不再显示！", saved_it: "我已保存", edit_model: "编辑模型",
+                save: "保存更改", integration_guide: "集成指南", integration_desc: "使用通用协议转换连接任何客户端到您的模型。",
+                pro_tip: "<strong>提示：</strong> 您可以将“添加密钥”中创建的任何 API 密钥用于任何协议。网关会根据您提供的模型名称自动路由请求。",
+                no_groups_title: "暂无模型组", no_groups_desc: "创建一个组以开始添加模型和路由流量。",
+                create_first_group: "创建第一个组", no_models_in_group: "此组中没有模型。", add_model_btn: "添加模型",
+                logs_viewer: "日志查看器", request_history: "请求历史", system_console: "系统控制台", reading_file: "正在读取 gateway.log..."
+            }
+        };
+
+        // --- State ---
         let adminKey = localStorage.getItem('admin_key');
+        let currentLang = localStorage.getItem('lang') || 'en';
         let dashboardData = [];
+        let logsOffset = 0;
+        let currentLogTab = 'request';
+        const LOGS_LIMIT = 50;
 
-        // Modal 控制函数
-        function showModal(modalId) {
-            const modal = document.getElementById(modalId);
-            if (modal) {
-                modal.classList.remove('hidden');
-                modal.style.display = 'flex';
-            }
-        }
-
-        
-        // Initialize dashboard
-        document.addEventListener('DOMContentLoaded', function() {
-            if (adminKey) {
-                document.getElementById('loginModal').classList.add('hidden');
-                loadDashboard();
-            } else {
-                document.getElementById('loginModal').classList.remove('hidden');
-            }
-
-            // 【关键修复】实施件委托 - 替代直接事件绑定
+        document.addEventListener('DOMContentLoaded', () => {
+            renderIcons();
+            updateLanguage(currentLang);
+            if (adminKey) { document.getElementById('loginModal').classList.add('hidden'); loadDashboard(); } 
+            else { showModal('loginModal'); }
             setupEventDelegation();
-
-            // 静态表单事件保留（这些表单不会被重新创建）
             document.getElementById('loginForm').addEventListener('submit', handleLogin);
             document.getElementById('addGroupForm').addEventListener('submit', handleAddGroup);
             document.getElementById('addModelForm').addEventListener('submit', handleAddModel);
@@ -597,880 +792,223 @@ sk-..."></textarea>
             document.getElementById('addAdminKeyForm').addEventListener('submit', createAdminKey);
         });
 
-        // API helper function with debug logging
-        async function fetchAPI(url, options = {}) {
-            // 从 localStorage 获取最新的 admin key
-            const token = localStorage.getItem('admin_key');
-
-            // 1. 定义基础 Headers (使用Headers对象以避免编码问题)
-            const headers = new Headers();
-            headers.append('Content-Type', 'application/json');
-
-            // 2. 强制注入 Auth Token (如果存在) - 添加防御性代码
-            if (token && token.trim()) {
-                const cleanToken = token.trim();
-
-                // 检查token是否包含非ISO-8859-1字符
-                try {
-                    // 测试是否可以正常编码
-                    encodeURIComponent(cleanToken);
-
-                    // 进一步检查：确保只包含安全字符
-                    if (!/^[a-zA-Z0-9\-_]+$/.test(cleanToken)) {
-                        throw new Error('Token contains invalid characters');
-                    }
-
-                    headers.append('Authorization', 'Bearer ' + cleanToken);
-                } catch (encodingError) {
-                    // 如果编码失败，提供友好的错误提示
-                    console.error('Token encoding error:', encodingError);
-                    throw new Error('API key contains invalid characters. Only letters, numbers, hyphens, and underscores are allowed.');
-                }
-            }
-
-            // 3. 构造请求选项
-            const finalOptions = {
-                method: options.method || 'GET',
-                headers: headers,
-            };
-
-            // 4. 如果有body，添加body
-            if (options.body) {
-                finalOptions.body = options.body;
-            }
-
-            const response = await fetch(url, finalOptions);
-
-            const data = await response.json();
-
-            // 如果响应状态码不是 2xx，抛出错误包含后端返回的消息
-            if (!response.ok) {
-                const errorMessage = data?.error?.message || data?.message || "Request failed (" + response.status + ")";
-                throw new Error(errorMessage);
-            }
-
-            return { response, data };
-        }
-
-        // 【关键修复】事件委托函数 - 使用 data 属性替代 onclick
-        function setupEventDelegation() {
-            // 委托给document（永远不会被替换的根元素）
-            document.addEventListener('click', function(e) {
-                // 查找点击的目标元素
-                const target = e.target.closest('[data-action]');
-                if (!target) return;
-
-                e.preventDefault();
-                const action = target.getAttribute('data-action');
-                const id = target.getAttribute('data-id');
-                const groupId = target.getAttribute('data-group-id');
-                const key = target.getAttribute('data-key');
-
-                switch (action) {
-                    case 'showAddModelModal':
-                        showAddModelModal(groupId);
-                        break;
-                    case 'deleteGroup':
-                        deleteGroup(groupId);
-                        break;
-                    case 'editModel':
-                        editModel(
-                            id,
-                            target.getAttribute('data-provider'),
-                            target.getAttribute('data-url'),
-                            target.getAttribute('data-model'),
-                            parseInt(target.getAttribute('data-timeout'))
-                        );
-                        break;
-                    case 'deleteModel':
-                        deleteModel(id);
-                        break;
-                    case 'showAddKeyModal':
-                        showAddKeyModal(id);
-                        break;
-                    case 'copyKey':
-                        copyToClipboard(key, target);
-                        break;
-                    case 'deleteKey':
-                        deleteKey(id);
-                        break;
-                    case 'copyAdminKey':
-                        copyToClipboard(key, target);
-                        break;
-                    case 'deleteAdminKey':
-                        deleteAdminKey(id);
-                        break;
-                }
+        // --- I18n ---
+        function toggleLanguage() { currentLang = currentLang === 'en' ? 'zh' : 'en'; localStorage.setItem('lang', currentLang); updateLanguage(currentLang); }
+        function updateLanguage(lang) {
+            document.getElementById('currentLang').textContent = lang.toUpperCase();
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (translations[lang][key]) el.innerHTML = translations[lang][key];
             });
+            if (dashboardData.length > 0) renderDashboard();
         }
+        function t(key) { return translations[currentLang][key] || key; }
 
-        // Authentication functions
-        async function handleLogin(e) {
-            e.preventDefault();
-            const key = document.getElementById('adminKeyInput').value.trim();
-            const loginBtn = e.target.querySelector('button[type="submit"]');
-            const loginText = document.getElementById('loginButtonText');
-
-            if (!key) {
-                showToast('Please enter an API key', 'error');
-                return;
-            }
-
-            // 强制清洗输入：只允许字母、数字、连字符、下划线
-            const cleanKey = key.replace(/[^a-zA-Z0-9\-_]/g, '');
-
-            // 检查清洗后是否有效
-            if (cleanKey.length < 10) {
-                showToast('Invalid API key format. Only letters, numbers, hyphens, and underscores are allowed.', 'error');
-                return;
-            }
-
-            // 如果清洗后的key与原key不同，说明有非法字符
-            if (cleanKey !== key) {
-                showToast('API key contains invalid characters and has been cleaned.', 'warning');
-                document.getElementById('adminKeyInput').value = cleanKey; // 更新输入框显示
-            }
-
-            adminKey = cleanKey;
-            localStorage.setItem('admin_key', cleanKey);
-
-            loginBtn.disabled = true;
-            loginText.innerHTML = '<span class="loading"></span> Authenticating...';
-
+        // --- API ---
+        async function fetchAPI(url, options = {}) {
+            const token = localStorage.getItem('admin_key');
+            const headers = new Headers({ 'Content-Type': 'application/json' });
+            if (token) headers.append('Authorization', 'Bearer ' + token.trim());
             try {
-                const result = await fetchAPI('/admin/model-groups');
-
-                if (result.response.ok) {
-                    document.getElementById('loginModal').classList.add('hidden');
-                    loadDashboard();
-                } else {
-                    console.error('Authentication failed:', result.data);
-                    showToast(result?.data?.error?.message || 'Invalid API key', 'error');
-                    // 清除无效的 key
-                    localStorage.removeItem('admin_key');
-                    adminKey = null;
+                const resp = await fetch(url, { ...options, headers });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    if (resp.status === 401) { localStorage.removeItem('admin_key'); showModal('loginModal'); }
+                    throw new Error(data?.error?.message || data?.message || "Request failed");
                 }
-            } catch (error) {
-                console.error('Authentication error:', error);
-                showToast(error.message || 'Authentication failed', 'error');
-                // 清除无效的 key
-                localStorage.removeItem('admin_key');
-                adminKey = null;
-            } finally {
-                loginBtn.disabled = false;
-                loginText.textContent = 'Login';
+                document.getElementById('networkErrorBanner').classList.add('hidden');
+                return { resp, data };
+            } catch (err) {
+                if (err instanceof TypeError) document.getElementById('networkErrorBanner').classList.remove('hidden');
+                throw err;
             }
         }
 
-        function logout() {
-            localStorage.removeItem('admin_key');
-            adminKey = null;
-            location.reload();
-        }
-
-        // Load dashboard data
-        async function loadDashboard() {
-            document.getElementById('loadingIndicator').classList.remove('hidden');
-            document.getElementById('refreshBtn').disabled = true;
-            document.getElementById('refreshBtn').innerHTML = '<span class="loading"></span> Loading...';
-
-            try {
-                const result = await fetchAPI('/admin/model-groups');
-                if (result && result.response.ok) {
-                    dashboardData = result.data.data || [];
-                    await loadDetailedData();
-                    renderDashboard();
-                    updateStats();
-                } else {
-                    showToast(result?.data?.error?.message || 'Failed to load data', 'error');
-                }
-            } catch (error) {
-                console.error('Load dashboard error:', error);
-                showToast(error.message || 'Failed to load dashboard data', 'error');
-
-                // 如果是认证错误，显示登录框
-                if (error.message.includes('API Key') || error.message.includes('认证')) {
-                    document.getElementById('loginModal').classList.remove('hidden');
-                }
-            } finally {
-                document.getElementById('loadingIndicator').classList.add('hidden');
-                document.getElementById('refreshBtn').disabled = false;
-                document.getElementById('refreshBtn').innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
-            }
-        }
-
-        // Load detailed data for each group
-        async function loadDetailedData() {
-            for (let group of dashboardData) {
-                try {
-                    // 【关键修改】使用 group_id 而不是 id，并添加 URL 编码
-                    const result = await fetchAPI('/admin/model-groups/' + encodeURIComponent(group.group_id));
-                    if (result && result.response.ok) {
-                        group.details = result.data.data;
-                    }
-                } catch (error) {
-                    console.error('Failed to load details for group', group.group_id, error);
-                }
-            }
-        }
-
-        // Render dashboard groups
+        // --- Render ---
         function renderDashboard() {
             const container = document.getElementById('groupsContainer');
             container.innerHTML = '';
-
-            if (!dashboardData || dashboardData.length === 0) {
-                container.innerHTML = '<div class="text-center py-12 text-gray-500">No model groups found. Click "Add Group" to create one.</div>';
-                return;
+            if (!dashboardData.length) {
+                container.innerHTML = `<div class="text-center py-16 border-2 border-dashed rounded-xl bg-muted/20"><div class="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4"><i data-lucide="layers" class="w-8 h-8 text-muted-foreground/50"></i></div><h3 class="text-xl font-semibold tracking-tight">${t('no_groups_title')}</h3><p class="text-muted-foreground text-sm mt-2 max-w-sm mx-auto">${t('no_groups_desc')}</p><button onclick="showAddGroupModal()" class="mt-6 inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-6 py-2 shadow-sm">${t('create_first_group')}</button></div>`;
+                renderIcons(); return;
             }
-
-            dashboardData.forEach(function(group) {
-                const groupCard = createGroupCard(group);
-                container.appendChild(groupCard);
-            });
+            dashboardData.forEach(g => container.appendChild(createGroupCard(g)));
+            renderIcons();
         }
 
-        // Create group card element
-        function createGroupCard(group) {
+        function createGroupCard(g) {
             const card = document.createElement('div');
-            card.className = 'bg-white rounded-lg shadow-lg';
-
-            const strategyBadge = group.strategy === 'round_robin'
-                ? '<span class="px-3 py-1 text-sm rounded-full bg-green-100 text-green-800"><i class="fas fa-circle text-xs mr-1"></i>Round Robin</span>'
-                : '<span class="px-3 py-1 text-sm rounded-full bg-blue-100 text-blue-800"><i class="fas fa-circle text-xs mr-1"></i>Fallback</span>';
-
-            // 【关键修改】使用可选链和正确的检查
-            const modelsHtml = group.details?.models && group.details.models.length > 0
-                ? group.details.models.map((model, index) => createModelRow(model, index, group.group_id)).join('')
-                : '<div class="text-center py-4 text-gray-500">No models found</div>';
-
-            card.innerHTML =
-                '<div class="px-6 py-4 border-b border-gray-200">' +
-                    '<div class="flex items-center justify-between">' +
-                        '<div>' +
-                            '<h2 class="text-xl font-bold text-gray-800">' + (group.group_id || 'Unknown') + '</h2>' +
-                            '<div class="flex items-center gap-3 mt-2">' +
-                                strategyBadge +
-                                '<span class="text-sm text-gray-500">' + (group.model_count || 0) + ' models</span>' +
-                            '</div>' +
-                        '</div>' +
-                        '<div class="flex items-center gap-2">' +
-                            '<button data-action="showAddModelModal" data-group-id="' + (group.group_id || '') + '" class="text-blue-600 hover:text-blue-800 p-2" title="Add Model">' +
-                                '<i class="fas fa-plus"></i>' +
-                            '</button>' +
-                            '<button data-action="deleteGroup" data-group-id="' + (group.group_id || '') + '" class="text-red-600 hover:text-red-800 p-2" title="Delete Group">' +
-                                '<i class="fas fa-trash"></i>' +
-                            '</button>' +
-                        '</div>' +
-                    '</div>' +
-                '</div>' +
-                '<div class="p-6">' +
-                    '<div class="space-y-4">' +
-                        modelsHtml +
-                    '</div>' +
-                '</div>';
-
+            card.className = 'bg-card text-card-foreground rounded-xl border shadow-sm overflow-hidden transition-all hover:border-muted-foreground/30';
+            const badge = g.strategy === 'round_robin' ? `<span class="px-2.5 py-1 text-xs font-semibold bg-emerald-500/10 text-emerald-600 rounded-md border border-emerald-500/20 inline-flex items-center gap-1.5"><i data-lucide="refresh-ccw" class="w-3 h-3"></i> ${t('round_robin')}</span>` : `<span class="px-2.5 py-1 text-xs font-semibold bg-blue-500/10 text-blue-600 rounded-md border border-blue-500/20 inline-flex items-center gap-1.5"><i data-lucide="arrow-down-narrow-wide" class="w-3 h-3"></i> ${t('fallback')}</span>`;
+            const models = g.details?.models?.length ? g.details.models.map((m, i) => createModelRow(m, i, g.group_id)).join('') : `<div class="text-center py-12 text-muted-foreground text-sm italic bg-muted/5 border-b border-border">${t('no_models_in_group')}</div>`;
+            card.innerHTML = `<div class="px-6 py-5 border-b bg-muted/10 flex items-center justify-between"><div><div class="flex items-center gap-3"><h2 class="text-lg font-bold tracking-tight">${g.group_id}</h2>${badge}</div><div class="text-xs text-muted-foreground mt-1.5 flex items-center gap-3 font-medium"><span><i data-lucide="box" class="w-3.5 h-3.5 mr-1 inline"></i>${g.model_count} models</span><span class="text-muted-foreground/30">|</span><span class="uppercase tracking-wider text-[10px]">ID: ${g.id}</span></div></div><div class="flex items-center gap-2"><button data-action="showAddModelModal" data-group-id="${g.group_id}" class="inline-flex items-center justify-center rounded-md text-sm font-medium h-9 px-3 gap-2 border bg-background shadow-sm hover:bg-accent"><i data-lucide="plus" class="w-4 h-4"></i> ${t('add_model_btn')}</button><button data-action="deleteGroup" data-group-id="${g.group_id}" class="inline-flex items-center justify-center rounded-md h-9 w-9 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div><div class="divide-y divide-border/50">${models}</div>`;
             return card;
         }
 
-        // Create model row element
-        function createModelRow(model, index, groupId) {
-            // 修复：使用正确的字段名 api_keys 而不是 keys
-            const keysHtml = model.api_keys && model.api_keys.length > 0
-                ? model.api_keys.map(key => createKeyElement(key)).join('')
-                : '<div class="text-sm text-gray-500">No API keys</div>';
-
-            // 【关键修改】使用循环索引 + 1 作为路由索引
-            const routingIndex = index + 1;
-
-            // 修复：计算实际的 keys 数量而不是使用不存在的 keys_count
-            const keysCount = model.api_keys ? model.api_keys.length : 0;
-
-          // 确保ID作为字符串处理，避免精度丢失
-            const modelIdStr = model.ID ? model.ID.toString() : '0';
-
-            return '<div class="border rounded-lg p-4 hover:bg-gray-50 transition">' +
-                '<div class="flex items-center justify-between mb-3">' +
-                    '<div class="flex items-center gap-3">' +
-                        '<span class="px-2 py-1 bg-gray-200 rounded text-sm font-mono">$' + routingIndex + '</span>' +
-                        '<div>' +
-                            '<div class="font-semibold text-gray-800">' + (model.provider_name || 'Unknown') + '</div>' +
-                            '<div class="text-sm text-gray-600">' + (model.upstream_model || 'Unknown') + '</div>' +
-                            '<div class="text-xs text-gray-500">' + (model.upstream_url || '') + '</div>' +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="flex items-center gap-2">' +
-                        '<button data-action="editModel" data-id="' + modelIdStr + '" data-provider="' + (model.provider_name || '').replace(/'/g, "\'") + '" data-url="' + (model.upstream_url || '').replace(/'/g, "\'") + '" data-model="' + (model.upstream_model || '').replace(/'/g, "\'") + '" data-timeout="' + (model.timeout || 30) + '" class="text-blue-600 hover:text-blue-800 p-2" title="Edit Model">' +
-                            '<i class="fas fa-edit"></i>' +
-                        '</button>' +
-                        '<button data-action="deleteModel" data-id="' + modelIdStr + '" class="text-red-600 hover:text-red-800 p-2" title="Delete Model">' +
-                            '<i class="fas fa-trash"></i>' +
-                        '</button>' +
-                    '</div>' +
-                '</div>' +
-                '<div class="mt-3">' +
-                    '<div class="text-xs text-gray-500 mb-1">API Keys (' + keysCount + ')</div>' +
-                    '<div class="flex flex-wrap gap-2">' +
-                        keysHtml +
-                        '<button data-action="showAddKeyModal" data-id="' + modelIdStr + '" class="px-2 py-1 bg-blue-100 text-blue-600 rounded text-xs hover:bg-blue-200" title="Add Key">' +
-                            '<i class="fas fa-plus"></i>' +
-                        '</button>' +
-                    '</div>' +
-                '</div>' +
-            '</div>';
+        function createModelRow(m, i, gid) {
+            const keys = m.api_keys?.length ? m.api_keys.map(k => createKeyElement(k)).join('') : `<span class="text-xs text-muted-foreground italic pl-1">No API keys</span>`;
+            let icon = 'box', color = 'text-muted-foreground';
+            if (m.provider_name === 'openai') { icon = 'bot'; color = 'text-green-600'; }
+            else if (m.provider_name === 'claude') { icon = 'sparkles'; color = 'text-purple-600'; }
+            else if (m.provider_name === 'gemini') { icon = 'gem'; color = 'text-blue-600'; }
+            return `<div class="p-4 hover:bg-muted/5 transition group"><div class="flex items-start gap-4 w-full"><div class="flex-shrink-0 mt-1"><span class="flex items-center justify-center w-6 h-6 rounded bg-muted text-xs font-mono text-muted-foreground font-medium">${i+1}</span></div><div class="flex-1 min-w-0"><div class="flex items-center gap-2 mb-1"><i data-lucide="${icon}" class="w-4 h-4 ${color}"></i><span class="font-semibold text-sm capitalize">${m.provider_name}</span><i data-lucide="arrow-right" class="w-3 h-3 text-muted-foreground/50"></i><span class="font-medium text-sm text-foreground">${m.upstream_model}</span><div class="ml-auto flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity"><button data-action="editModel" data-id="${m.ID}" data-provider="${m.provider_name}" data-url="${m.upstream_url}" data-model="${m.upstream_model}" data-timeout="${m.timeout}" class="inline-flex items-center justify-center rounded-md h-8 w-8 text-muted-foreground hover:bg-accent hover:text-foreground"><i data-lucide="settings-2" class="w-4 h-4"></i></button><button data-action="deleteModel" data-id="${m.ID}" class="inline-flex items-center justify-center rounded-md h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div><div class="text-xs text-muted-foreground font-mono break-all bg-muted/30 px-2 py-0.5 rounded inline-block">${m.upstream_url}</div><div class="mt-3 flex flex-wrap gap-2 items-center">${keys}<button data-action="showAddKeyModal" data-id="${m.ID}" class="inline-flex items-center justify-center rounded-full border border-dashed px-2.5 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent h-6"><i data-lucide="plus" class="w-3 h-3 mr-1"></i> Key</button></div></div></div></div>`;
         }
 
-        // API Key脱敏显示函数
-        function maskApiKey(key) {
-            if (!key || key.length <= 8) {
-                return key;
-            }
-            return key.substring(0, 4) + '...' + key.substring(key.length - 4);
+        function createKeyElement(k) {
+            return `<div class="inline-flex items-center gap-1.5 bg-background border rounded-md px-2 py-0.5 text-xs font-mono group/key relative pr-7 shadow-sm"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span><span class="cursor-pointer hover:text-primary transition-colors select-all" data-action="copyKey" data-key="${k.key_value}">${maskApiKey(k.key_value)}</span><button data-action="deleteKey" data-id="${k.ID}" class="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-destructive p-0.5 rounded-sm hover:bg-destructive/10 hidden group-hover/key:block"><i data-lucide="x" class="w-3 h-3"></i></button></div>`;
         }
 
-        // Create key element with copy and delete buttons
-        function createKeyElement(key) {
-            const maskedKey = maskApiKey(key.key_value);
-            const keyIdStr = key.ID ? key.ID.toString() : '0';
-            return '<div class="relative group">' +
-                '<span data-action="copyKey" data-key="' + (key.key_value || '') + '" class="px-2 py-1 bg-gray-100 rounded text-xs font-mono cursor-pointer hover:bg-gray-200 transition">' +
-                    maskedKey +
-                '</span>' +
-                '<button data-action="deleteKey" data-id="' + keyIdStr + '" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs hidden group-hover:block" title="Delete Key">' +
-                    '<i class="fas fa-times"></i>' +
-                '</button>' +
-            '</div>';
-        }
+        function maskApiKey(k) { return k && k.length > 8 ? k.substring(0, 4) + '•••' + k.substring(k.length - 4) : k; }
 
-        // Update statistics
         function updateStats() {
-            let totalGroups = dashboardData ? dashboardData.length : 0;
-            let totalModels = 0;
-            let totalKeys = 0;
-            let totalRequests = 0;
-
-            if (dashboardData) {
-                dashboardData.forEach(function(group) {
-                    // 修复：使用正确的字段名 model_count
-                    totalModels += group.model_count || 0;
-                    if (group.details?.models) {
-                        group.details.models.forEach(function(model) {
-                            // 修复：使用正确的字段名
-                            const keysCount = model.api_keys ? model.api_keys.length : 0;
-                            totalKeys += keysCount;
-                            totalRequests += model.total_requests || 0;
-                        });
-                    }
-                });
-            }
-
-            document.getElementById('totalGroups').textContent = totalGroups;
-            document.getElementById('totalModels').textContent = totalModels;
-            document.getElementById('totalKeys').textContent = totalKeys;
-            document.getElementById('totalRequests').textContent = totalRequests;
+            let groups = dashboardData.length, models = 0, keys = 0, reqs = 0;
+            dashboardData.forEach(g => {
+                models += g.model_count;
+                g.details?.models?.forEach(m => { keys += m.api_keys?.length || 0; reqs += m.total_requests || 0; });
+            });
+            document.getElementById('totalGroups').textContent = groups;
+            document.getElementById('totalModels').textContent = models;
+            document.getElementById('totalKeys').textContent = keys;
+            document.getElementById('totalRequests').textContent = reqs;
         }
 
-        // Refresh dashboard
-        function refreshDashboard() {
-            loadDashboard();
+        // --- Logs Logic ---
+        function switchLogTab(tab) {
+            currentLogTab = tab;
+            const isReq = tab === 'request';
+            document.getElementById('tabRequestLogs').className = `px-4 py-3 text-sm font-medium border-b-2 transition-all ${isReq ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`;
+            document.getElementById('tabSystemLogs').className = `px-4 py-3 text-sm font-medium border-b-2 transition-all ${!isReq ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`;
+            document.getElementById('requestLogsContent').classList.toggle('hidden', !isReq);
+            document.getElementById('systemLogsContent').classList.toggle('hidden', isReq);
+            refreshCurrentLogs();
         }
 
-        // Modal functions
-        function showIntegrationModal() {
-            const origin = window.location.origin;
-            
-            // OpenAI
-            document.getElementById('baseOpenAIUrl').textContent = origin + '/v1';
-            document.getElementById('fullOpenAIUrl').textContent = origin + '/v1/chat/completions';
-            
-            // Claude
-            document.getElementById('baseClaudeUrl').textContent = origin + '/v1';
-            document.getElementById('fullClaudeUrl').textContent = origin + '/v1/messages';
-            
-            // Gemini
-            document.getElementById('baseGeminiUrl').textContent = origin;
-            document.getElementById('fullGeminiUrl').textContent = origin + '/v1beta/models/{model}:generateContent';
-            
-            showModal('integrationModal');
+        function refreshCurrentLogs() { currentLogTab === 'request' ? loadLogs(0) : loadSystemLogs(); }
+
+        function showLogsModal() { switchLogTab('request'); showModal('logsModal'); }
+
+        async function loadLogs(offset) {
+            const list = document.getElementById('logsList'), loading = document.getElementById('logsLoading'), empty = document.getElementById('logsEmpty');
+            list.innerHTML = ''; loading.classList.remove('hidden'); empty.classList.add('hidden');
+            try {
+                const { data } = await fetchAPI(`/admin/logs?limit=${LOGS_LIMIT}&offset=${offset}`);
+                const logs = data.data.logs || [], total = data.data.total || 0;
+                loading.classList.add('hidden');
+                if (!logs.length) empty.classList.remove('hidden');
+                else { logs.forEach(l => list.innerHTML += createLogRow(l)); renderIcons(); }
+                logsOffset = offset;
+                document.getElementById('logsPrevBtn').disabled = offset <= 0;
+                document.getElementById('logsNextBtn').disabled = (offset + LOGS_LIMIT) >= total;
+                document.getElementById('logsPaginationInfo').textContent = `Showing ${total ? offset + 1 : 0}-${Math.min(offset + LOGS_LIMIT, total)} of ${total}`;
+            } catch (e) { loading.classList.add('hidden'); }
         }
 
-        function showAddGroupModal() {
-            showModal('addGroupModal');
+        async function loadSystemLogs() {
+            const term = document.getElementById('systemLogsTerminal');
+            try {
+                const { data } = await fetchAPI('/admin/system-logs');
+                const logs = data.data.logs || 'No logs found.';
+                // Basic coloring for common log patterns
+                term.innerHTML = logs.split('\n').map(line => {
+                    if (line.includes("\"level\":\"error\"")) return `<span class=\"text-red-400\">${line}</span>`;
+                    if (line.includes("\"level\":\"warn\"")) return `<span class=\"text-yellow-400\">${line}</span>`;
+                    if (line.includes("\"level\":\"info\"")) return `<span class=\"text-blue-400\">${line}</span>`;
+                    return line;
+                }).join('\n');
+                term.scrollTop = term.scrollHeight;
+            } catch (e) { term.textContent = 'Error loading gateway.log'; }
         }
 
-        function showAddModelModal(groupId) {
-            // 添加 ID 验证保护
-            if (!groupId || groupId === 'undefined' || groupId === 'null') {
-                showToast('Invalid group ID', 'error');
-                return;
-            }
-            document.getElementById('addModelGroupId').value = groupId;
-            showModal('addModelModal');
+        function prevLogs() { if (logsOffset > 0) loadLogs(logsOffset - LOGS_LIMIT); }
+        function nextLogs() { loadLogs(logsOffset + LOGS_LIMIT); }
+        function createLogRow(l) {
+            const date = new Date(l.created_at * 1000);
+            let sc = 'text-green-600 bg-green-500/10 border-green-500/20';
+            if (l.status_code >= 400) sc = 'text-yellow-600 bg-yellow-500/10 border-yellow-500/20';
+            if (l.status_code >= 500) sc = 'text-red-600 bg-red-500/10 border-red-500/20';
+            return `<tr class="hover:bg-muted/30 transition-colors"><td class="px-4 py-3 text-xs font-mono text-muted-foreground whitespace-nowrap">${date.toLocaleTimeString()}</td><td class="px-4 py-3"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${sc}">${l.status_code}</span></td><td class="px-4 py-3 text-xs font-mono">${l.duration_ms}ms</td><td class="px-4 py-3 text-xs font-medium">${l.upstream_model || '-'}</td><td class="px-4 py-3 text-xs font-mono text-muted-foreground">${l.client_ip || '-'}</td><td class="px-4 py-3 text-xs font-mono text-muted-foreground truncate max-w-[100px]" title="${l.request_id}">${l.request_id}</td></tr>`;
         }
 
-        function showAddKeyModal(modelId) {
-            // 添加 ID 验证保护
-            if (!modelId || modelId === 'undefined' || modelId === 'null') {
-                showToast('Invalid model ID', 'error');
-                return;
-            }
-            document.getElementById('addKeyModelId').value = modelId;
-            showModal('addKeyModal');
-        }
-
-        function closeModal(modalId) {
-            const modal = document.getElementById(modalId);
-            if (modal) {
-                modal.classList.add('hidden');
-                modal.style.display = 'none';
-
-                // 【关键修复】确保移除所有可能导致遮挡的类
-                modal.classList.remove('flex', 'block');
-
-                // Reset form if it exists
-                const form = modal.querySelector('form');
-                if (form) form.reset();
-            }
-        }
-
-        // 【新增】强制关闭所有模态框的函数 - 解决模态框状态锁定问题
-        function forceCloseAllModals() {
-            const modals = document.querySelectorAll('[id$="Modal"]');
-            modals.forEach(modal => {
-                modal.classList.add('hidden');
-                modal.classList.remove('flex', 'block');
-                modal.style.display = 'none';
+        // --- Interaction ---
+        function setupEventDelegation() {
+            document.addEventListener('click', e => {
+                const t = e.target.closest('[data-action]'); if (!t) return; e.preventDefault();
+                const a = t.getAttribute('data-action'), id = t.getAttribute('data-id'), gid = t.getAttribute('data-group-id'), key = t.getAttribute('data-key');
+                switch (a) {
+                    case 'showAddModelModal': showAddModelModal(gid); break;
+                    case 'deleteGroup': deleteGroup(gid); break;
+                    case 'editModel': editModel(id, t.dataset.provider, t.dataset.url, t.dataset.model, t.dataset.timeout); break;
+                    case 'deleteModel': deleteModel(id); break;
+                    case 'showAddKeyModal': showAddKeyModal(id); break;
+                    case 'copyKey': copyToClipboard(key, t); break;
+                    case 'deleteKey': deleteKey(id); break;
+                    case 'deleteAdminKey': deleteAdminKey(id); break;
+                }
             });
         }
 
-        // 【增强】showModal函数，确保模态框正确显示
-        function showModal(modalId) {
-            // 先强制关闭所有模态框，避免叠加
-            forceCloseAllModals();
+        function showModal(mid) { forceCloseAllModals(); const m = document.getElementById(mid); if (m) { m.classList.remove('hidden'); m.classList.add('flex'); } }
+        function closeModal(mid) { const m = document.getElementById(mid); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); const f = m.querySelector('form'); if (f) f.reset(); } }
+        function forceCloseAllModals() { document.querySelectorAll('[id$="Modal"]').forEach(m => { m.classList.add('hidden'); m.classList.remove('flex'); }); }
 
-            const modal = document.getElementById(modalId);
-            if (modal) {
-                modal.classList.remove('hidden');
-                modal.classList.add('flex');
-                modal.style.display = 'flex';
-            }
+        // --- CRUD Handlers ---
+        async function handleLogin(e) {
+            e.preventDefault(); const key = document.getElementById('adminKeyInput').value.trim();
+            const btn = e.target.querySelector('button[type="submit"]');
+            if (!key) return showToast('Please enter key', 'error');
+            localStorage.setItem('admin_key', key.replace(/[^a-zA-Z0-9\-_]/g, ''));
+            btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="w-4 animate-spin mr-2"></i> ...'; renderIcons();
+            try { await fetchAPI('/admin/model-groups'); closeModal('loginModal'); loadDashboard(); } 
+            catch (err) { showToast(err.message, 'error'); localStorage.removeItem('admin_key'); } 
+            finally { btn.disabled = false; btn.innerHTML = t('access_dashboard'); }
         }
 
-        // Form handlers
-        async function handleAddGroup(e) {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const data = {
-                group_id: formData.get('group_id'),
-                strategy: formData.get('strategy')
-            };
+        function logout() { localStorage.removeItem('admin_key'); location.reload(); }
 
+        async function loadDashboard() {
+            const loader = document.getElementById('loadingIndicator'), btn = document.getElementById('refreshBtn');
+            if (!document.getElementById('groupsContainer').children.length) loader.classList.remove('hidden');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="animate-spin"></i>'; renderIcons(); }
             try {
-                await fetchAPI('/admin/model-groups', {
-                    method: 'POST',
-                    body: JSON.stringify(data)
-                });
-
-                showToast('Group added successfully', 'success');
-                closeModal('addGroupModal');
-                loadDashboard();
-            } catch (error) {
-                showToast(error.message || 'Failed to add group', 'error');
-            }
+                const { data } = await fetchAPI('/admin/model-groups'); dashboardData = data.data || [];
+                for (let g of dashboardData) { const res = await fetchAPI('/admin/model-groups/' + encodeURIComponent(g.group_id)); g.details = res.data.data; }
+                renderDashboard(); updateStats();
+            } catch (err) { if (!err.message.includes("Session")) showToast('Load error', 'error'); } 
+            finally { loader.classList.add('hidden'); if (btn) { btn.disabled = false; btn.innerHTML = `<i data-lucide="refresh-cw" class="w-4 h-4"></i> <span class="hidden sm:inline">${t('refresh')}</span>`; renderIcons(); } }
         }
 
-        async function handleAddModel(e) {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const keysText = formData.get('keys').trim();
-            const keys = keysText.split('\n').filter(k => k.trim());
+        async function handleAddGroup(e) { e.preventDefault(); const fd = new FormData(e.target); try { await fetchAPI('/admin/model-groups', { method: 'POST', body: JSON.stringify({ group_id: fd.get('group_id'), strategy: fd.get('strategy') }) }); showToast('Group created', 'success'); closeModal('addGroupModal'); loadDashboard(); } catch (err) { showToast(err.message, 'error'); } }
+        async function handleAddModel(e) { e.preventDefault(); const fd = new FormData(e.target); try { await fetchAPI(`/admin/model-groups/${fd.get('group_id')}/models`, { method: 'POST', body: JSON.stringify({ provider_name: fd.get('provider_name'), upstream_url: fd.get('upstream_url'), upstream_model: fd.get('upstream_model'), timeout: parseInt(fd.get('timeout')), keys: fd.get('keys').trim().split('\n').filter(k => k.trim()) }) }); showToast('Model added', 'success'); closeModal('addModelModal'); loadDashboard(); } catch (err) { showToast(err.message, 'error'); } }
+        async function handleAddKey(e) { e.preventDefault(); const fd = new FormData(e.target); try { await fetchAPI(`/admin/models/${fd.get('model_id')}/keys`, { method: 'POST', body: JSON.stringify({ key: fd.get('key') }) }); showToast('Key added', 'success'); closeModal('addKeyModal'); loadDashboard(); } catch (err) { showToast(err.message, 'error'); } }
+        async function handleEditModel(e) { e.preventDefault(); const fd = new FormData(e.target); try { await fetchAPI(`/admin/models/${fd.get('id')}`, { method: 'PUT', body: JSON.stringify({ provider_name: fd.get('provider_name'), upstream_url: fd.get('upstream_url'), upstream_model: fd.get('upstream_model'), timeout: parseInt(fd.get('timeout')) }) }); showToast('Model updated', 'success'); closeModal('editModelModal'); loadDashboard(); } catch (err) { showToast(err.message, 'error'); } }
+        async function deleteGroup(id) { if (confirm(t('delete_group_confirm') || 'Delete group?')) try { await fetchAPI(`/admin/model-groups/${id}`, { method: 'DELETE' }); showToast('Deleted', 'success'); loadDashboard(); } catch (err) { showToast(err.message, 'error'); } }
+        async function deleteModel(id) { if (confirm('Delete model?')) try { await fetchAPI(`/admin/models/${id}`, { method: 'DELETE' }); showToast('Deleted', 'success'); loadDashboard(); } catch (err) { showToast(err.message, 'error'); } }
+        async function deleteKey(id) { if (confirm('Delete key?')) try { await fetchAPI(`/admin/keys/${id}`, { method: 'DELETE' }); showToast('Deleted', 'success'); loadDashboard(); } catch (err) { showToast(err.message, 'error'); } }
 
-            const data = {
-                provider_name: formData.get('provider_name'),
-                upstream_url: formData.get('upstream_url'),
-                upstream_model: formData.get('upstream_model'),
-                timeout: parseInt(formData.get('timeout')),
-                keys: keys
-            };
-
-            const groupId = formData.get('group_id');
-
-            try {
-                await fetchAPI('/admin/model-groups/' + groupId + '/models', {
-                    method: 'POST',
-                    body: JSON.stringify(data)
-                });
-
-                showToast('Model added successfully', 'success');
-                closeModal('addModelModal');
-                loadDashboard();
-            } catch (error) {
-                showToast(error.message || 'Failed to add model', 'error');
-            }
-        }
-
-        async function handleAddKey(e) {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const data = {
-                key: formData.get('key')
-            };
-
-            const modelId = formData.get('model_id');
-            try {
-                await fetchAPI('/admin/models/' + modelId + '/keys', {
-                    method: 'POST',
-                    body: JSON.stringify(data)
-                });
-
-                showToast('API key added successfully', 'success');
-                closeModal('addKeyModal');
-                loadDashboard();
-            } catch (error) {
-                showToast(error.message || 'Failed to add API key', 'error');
-            }
-        }
-
-        // Edit Model functions
-        function editModel(id, providerName, upstreamUrl, upstreamModel, timeout) {
-            // 添加 ID 验证保护
-            if (!id || id === 'undefined' || id === 'null') {
-                showToast('Invalid model ID', 'error');
-                return;
-            }
-            document.getElementById('editModelId').value = id;
-            
-            // Normalize provider name for dropdown
-            let normalizedProvider = providerName ? providerName.toLowerCase() : 'openai';
-            if (normalizedProvider === 'anthropic') normalizedProvider = 'claude';
-            if (normalizedProvider === 'google') normalizedProvider = 'gemini';
-            
-            document.getElementById('editProviderName').value = normalizedProvider;
-            document.getElementById('editUpstreamUrl').value = upstreamUrl;
-            document.getElementById('editUpstreamModel').value = upstreamModel;
-            document.getElementById('editTimeout').value = timeout;
-            showModal('editModelModal');
-        }
-
-        async function handleEditModel(e) {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const modelId = formData.get('id');
-
-            const data = {
-                provider_name: formData.get('provider_name'),
-                upstream_url: formData.get('upstream_url'),
-                upstream_model: formData.get('upstream_model'),
-                timeout: parseInt(formData.get('timeout'))
-            };
-
-            try {
-                await fetchAPI('/admin/models/' + modelId, {
-                    method: 'PUT',
-                    body: JSON.stringify(data)
-                });
-
-                showToast('Model updated successfully', 'success');
-                closeModal('editModelModal');
-                loadDashboard();
-            } catch (error) {
-                showToast(error.message || 'Failed to update model', 'error');
-            }
-        }
-
-        // Delete functions
-        async function deleteGroup(groupId) {
-            // 添加 ID 验证保护
-            if (!groupId || groupId === 'undefined' || groupId === 'null') {
-                showToast('Invalid group ID', 'error');
-                return;
-            }
-            if (!confirm('Are you sure you want to delete this group and all its models?')) return;
-
-            try {
-                await fetchAPI('/admin/model-groups/' + groupId, {
-                    method: 'DELETE'
-                });
-
-                showToast('Group deleted successfully', 'success');
-                loadDashboard();
-            } catch (error) {
-                showToast(error.message || 'Failed to delete group', 'error');
-            }
-        }
-
-        async function deleteModel(modelId) {
-            // 添加 ID 验证保护
-            if (!modelId || modelId === 'undefined' || modelId === 'null') {
-                showToast('Invalid model ID', 'error');
-                return;
-            }
-            if (!confirm('Are you sure you want to delete this model?')) return;
-
-            try {
-                await fetchAPI('/admin/models/' + modelId, {
-                    method: 'DELETE'
-                });
-
-                showToast('Model deleted successfully', 'success');
-                loadDashboard();
-            } catch (error) {
-                showToast(error.message || 'Failed to delete model', 'error');
-            }
-        }
-
-        async function deleteKey(keyId) {
-            // 添加 ID 验证保护
-            if (!keyId || keyId === 'undefined' || keyId === 'null') {
-                showToast('Invalid key ID', 'error');
-                return;
-            }
-            if (!confirm('Are you sure you want to delete this API key?')) return;
-
-            try {
-                await fetchAPI('/admin/keys/' + keyId, {
-                    method: 'DELETE'
-                });
-
-                showToast('API key deleted successfully', 'success');
-                loadDashboard();
-            } catch (error) {
-                showToast(error.message || 'Failed to delete API key', 'error');
-            }
-        }
-
-        // Copy to clipboard (with fallback)
-        function copyToClipboard(text, element) {
-            // Try modern clipboard API first
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(text).then(() => {
-                    showCopySuccess(element);
-                }).catch(() => {
-                    fallbackCopy(text, element);
-                });
-            } else {
-                fallbackCopy(text, element);
-            }
-        }
-
-        function fallbackCopy(text, element) {
-            // Create temporary textarea
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            textarea.style.position = 'fixed';
-            textarea.style.left = '-999999px';
-            document.body.appendChild(textarea);
-            textarea.focus();
-            textarea.select();
-
-            try {
-                document.execCommand('copy');
-                showCopySuccess(element);
-            } catch (err) {
-                showToast('Failed to copy', 'error');
-            }
-
-            document.body.removeChild(textarea);
-        }
-
-        // 【绝对稳】专门处理Admin Key复制的函数
-        function handleCopyKey(button) {
-            // 确保获取到按钮元素
-            if (!button) {
-                console.error('No button provided to handleCopyKey');
-                showToast('Copy failed: invalid button', 'error');
-                return;
-            }
-
-            // 多重尝试获取密钥
-            let keyValue = null;
-
-            // 方法1: 从data-full-key属性获取
-            keyValue = button.getAttribute('data-full-key');
-
-            // 方法2: 如果方法1失败，尝试从data-key属性获取
-            if (!keyValue) {
-                keyValue = button.getAttribute('data-key');
-            }
-
-            // 方法3: 如果都失败了，获取dataset
-            if (!keyValue && button.dataset) {
-                keyValue = button.dataset.fullKey || button.dataset.key;
-            }
-
-            // 详细调试信息
-            console.log('handleCopyKey - button:', button);
-            console.log('handleCopyKey - keyValue:', keyValue);
-            console.log('handleCopyKey - keyValue length:', keyValue ? keyValue.length : 'null');
-            console.log('handleCopyKey - keyValue contains "...":', keyValue ? keyValue.includes('...') : 'null');
-
-            // 验证获取到的值
-            if (!keyValue || keyValue === 'undefined' || keyValue === 'null' || keyValue.trim() === '') {
-                console.error('No valid key found in button dataset', button);
-                console.log('Available attributes:', Array.from(button.attributes).map(attr => attr.name + "='" + attr.value + "'"));
-                showToast('Copy failed: no key available', 'error');
-                return;
-            }
-
-            // 调用现有的复制函数
-            copyToClipboard(keyValue.trim(), button);
-        }
-
-        function showCopySuccess(element) {
-            const isIcon = element.tagName === 'I' || element.querySelector('i');
-
-            if (isIcon) {
-                // 处理图标按钮
-                const icon = element.tagName === 'I' ? element : element.querySelector('i');
-                const originalClass = icon.className;
-                icon.className = 'fas fa-check text-green-600';
-                setTimeout(() => {
-                    icon.className = originalClass;
-                }, 2000);
-            } else {
-                // 处理文本元素
-                const originalText = element.textContent;
-                element.textContent = 'Copied!';
-                element.classList.add('text-green-600');
-                setTimeout(() => {
-                    element.textContent = originalText;
-                    element.classList.remove('text-green-600');
-                }, 2000);
-            }
-        }
-
-        // Admin Keys Management
-        function showAdminKeysModal() {
-            loadAdminKeys(); // 先加载数据
-            showModal('adminKeysModal'); // 再显示弹窗
-        }
-
+        function showAdminKeysModal() { loadAdminKeys(); showModal('adminKeysModal'); }
         async function loadAdminKeys() {
             try {
-                const result = await fetchAPI('/admin/admin-keys');
-
-                if (result && result.response.ok) {
-                    const adminKeys = result.data.data;
-                    const tableBody = document.getElementById('adminKeysList');
-                    const noKeysMsg = document.getElementById('noAdminKeys');
-
-                    if (adminKeys.length === 0) {
-                        tableBody.innerHTML = '';
-                        noKeysMsg.classList.remove('hidden');
-                    } else {
-                        noKeysMsg.classList.add('hidden');
-                        // 【解除限制】Admin Key表格渲染 - 所有密钥都可完整复制
-                        let rows = adminKeys.map((key, index) => {
-                            // 显示用的脱敏密钥
-                            const displayKey = key.key_preview || maskApiKey(key.key || 'No Key');
-                            const keyIdStr = key.id ? key.id.toString() : '0';
-                            const rowNumber = index + 1;
-
-                            // 【关键修改】强制使用后端返回的完整密钥
-                            const fullKey = key.key || 'No Key Available';
-                            const buttonTitle = 'Copy Full Key';
-
-                            console.log('Rendering Admin Key - ID:', key.id, 'Full Key Length:', fullKey.length);
-
-                            // 安全地转义完整密钥用于HTML属性
-                            const escapedFullKey = fullKey.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-
-                            return '<tr>' +
-                                '<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">' + rowNumber + '</td>' +
-                                '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' + key.name + '</td>' +
-                                '<td class="px-6 py-4 whitespace-nowrap text-sm font-mono">' +
-                                    '<span class="inline-block max-w-xs truncate" title="' + fullKey + '">' + displayKey + '</span>' +
-                                '</td>' +
-                                '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' + new Date(key.created_at * 1000).toLocaleDateString() + '</td>' +
-                                '<td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">' +
-                                    '<button onclick="handleCopyKey(this)" data-full-key="' + escapedFullKey + '" class="text-blue-600 hover:text-blue-900 transition" title="' + buttonTitle + '">' +
-                                        '<i class="fas fa-copy"></i>' +
-                                    '</button>' +
-                                    '<button data-action="deleteAdminKey" data-id="' + keyIdStr + '" class="text-red-600 hover:text-red-900 transition" title="Delete">' +
-                                        '<i class="fas fa-trash"></i>' +
-                                    '</button>' +
-                                '</td>' +
-                            '</tr>';
-                        }).join('');
-                        tableBody.innerHTML = rows;
-                    }
-                } else {
-                    showToast(result?.data?.error?.message || 'Failed to load admin keys', 'error');
-                }
-            } catch (error) {
-                showToast(error.message || 'Failed to load admin keys', 'error');
-            }
+                const { data } = await fetchAPI('/admin/admin-keys'); const keys = data.data || [], list = document.getElementById('adminKeysList'), empty = document.getElementById('noAdminKeys');
+                list.innerHTML = ''; empty.classList.toggle('hidden', !!keys.length);
+                list.innerHTML = keys.map((k, i) => `<tr class="hover:bg-muted/30"><td class="px-4 py-3 font-medium">${i+1}</td><td class="px-4 py-3 font-medium">${k.name}</td><td class="px-4 py-3 font-mono text-xs text-muted-foreground" title="${k.key}">${k.key_preview || maskApiKey(k.key)}</td><td class="px-4 py-3 text-muted-foreground text-xs">${new Date(k.created_at * 1000).toLocaleDateString()}</td><td class="px-4 py-3 flex gap-2"><button onclick="copyToClipboard('${k.key}', this)" class="p-1 hover:text-primary rounded"><i data-lucide="copy" class="w-4 h-4"></i></button><button data-action="deleteAdminKey" data-id="${k.id}" class="p-1 hover:text-destructive rounded"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>`).join('');
+                renderIcons();
+            } catch (e) { showToast('Load error', 'error'); }
         }
+        async function createAdminKey(e) { e.preventDefault(); const n = new FormData(e.target).get('name'); try { const { data } = await fetchAPI('/admin/admin-keys', { method: 'POST', body: JSON.stringify({ name: n }) }); document.getElementById('newAdminKeyValue').value = data.data.key; closeModal('addAdminKeyModal'); showModal('newAdminKeyModal'); } catch (err) { showToast('Failed', 'error'); } }
+        async function deleteAdminKey(id) { if (confirm('Delete admin key?')) try { await fetchAPI(`/admin/admin-keys/${id}`, { method: 'DELETE' }); showToast('Deleted', 'success'); loadAdminKeys(); } catch (err) { showToast(err.message, 'error'); } }
 
-        function showAddAdminKeyModal() {
-            showModal('addAdminKeyModal');
-        }
-
-        async function createAdminKey(event) {
-            event.preventDefault();
-
-            const formData = new FormData(event.target);
-            const name = formData.get('name');
-
-            try {
-                // 直接传 URL, Method, Body。不要传 Headers。
-                const result = await fetchAPI('/admin/admin-keys', {
-                    method: 'POST',
-                    body: JSON.stringify({ name })
-                });
-
-                if (result && result.response.ok) {
-                    const newKey = result.data.data;
-                    document.getElementById('newAdminKeyValue').value = newKey.key;
-                    closeModal('addAdminKeyModal');
-                    showModal('newAdminKeyModal');
-                    showToast('Admin key created successfully', 'success');
-                } else {
-                    showToast(result?.data?.message || result?.data?.error?.message || 'Failed to create admin key', 'error');
-                }
-            } catch (error) {
-                showToast(error.message || 'Failed to create admin key', 'error');
-            }
-        }
-
-        async function deleteAdminKey(keyId) {
-            if (!confirm('Are you sure you want to delete this admin key? This action cannot be undone.')) return;
-
-            try {
-                const result = await fetchAPI('/admin/admin-keys/' + keyId, {
-                    method: 'DELETE'
-                });
-
-                if (result && result.response.ok) {
-                    showToast('Admin key deleted successfully', 'success');
-                    loadAdminKeys();
-                } else {
-                    showToast(result?.data?.message || result?.data?.error?.message || 'Failed to delete admin key', 'error');
-                }
-            } catch (error) {
-                showToast(error.message || 'Failed to delete admin key', 'error');
-            }
-        }
-
-        // Toast notification
-        function showToast(message, type) {
-            const toast = document.getElementById('toast');
-            const icon = document.getElementById('toastIcon');
-            const msg = document.getElementById('toastMessage');
-
-            msg.textContent = message;
-            icon.className = type === 'success'
-                ? 'fas fa-check-circle text-green-500 text-xl'
-                : 'fas fa-exclamation-circle text-red-500 text-xl';
-
-            toast.classList.remove('hidden');
-            setTimeout(() => {
-                toast.classList.add('hidden');
-            }, 3000);
-        }
-
-        // 【优化】移除自动轮询，改为手动刷新模式
-        // 避免日志刷屏，提升用户体验
+        // --- Helpers ---
+        function showIntegrationModal() { const o = window.location.origin; document.getElementById('baseOpenAIUrl').textContent = o + '/v1'; document.getElementById('baseClaudeUrl').textContent = o + '/v1'; document.getElementById('baseGeminiUrl').textContent = o; showModal('integrationModal'); }
+        function showAddGroupModal() { showModal('addGroupModal'); }
+        function showAddModelModal(gid) { document.getElementById('addModelGroupId').value = gid; showModal('addModelModal'); }
+        function showAddKeyModal(mid) { document.getElementById('addKeyModelId').value = mid; showModal('addKeyModal'); }
+        function showAddAdminKeyModal() { showModal('addAdminKeyModal'); }
+        function editModel(id, p, u, m, t) { document.getElementById('editModelId').value = id; document.getElementById('editProviderName').value = p; document.getElementById('editUpstreamUrl').value = u; document.getElementById('editUpstreamModel').value = m; document.getElementById('editTimeout').value = t; showModal('editModelModal'); }
+        function copyToClipboard(t, e) { if (navigator.clipboard) navigator.clipboard.writeText(t).then(() => showCopySuccess(e)).catch(() => fallbackCopy(t, e)); else fallbackCopy(t, e); }
+        function fallbackCopy(t, e) { const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.left = '-9999px'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); showCopySuccess(e); } catch (e) {} document.body.removeChild(ta); }
+        function showCopySuccess(e) { const i = e.querySelector('svg') || e.querySelector('i'); if (i) { const oc = i.style.color; i.style.color = '#22c55e'; setTimeout(() => i.style.color = oc, 2000); } showToast('Copied', 'success'); }
+        function showToast(m, t) { const toast = document.getElementById('toast'), msg = document.getElementById('toastMessage'), ic = document.getElementById('toastIconContainer'); msg.textContent = m; ic.innerHTML = t === 'success' ? '<i data-lucide="check-circle-2" class="w-5 h-5 text-green-500"></i>' : '<i data-lucide="alert-circle" class="w-5 h-5 text-red-500"></i>'; renderIcons(); toast.classList.remove('hidden'); setTimeout(() => toast.classList.add('hidden'), 3000); }
+        function refreshDashboard() { loadDashboard(); }
     </script>
 </body>
 </html>

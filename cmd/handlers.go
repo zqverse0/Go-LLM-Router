@@ -6,6 +6,7 @@ import (
 	"llm-gateway/core"
 	"llm-gateway/core/security"
 	"llm-gateway/models"
+	"os"
 	"strconv"
 	"time"
 
@@ -733,6 +734,70 @@ func handleReload(lb *core.LoadBalancer) gin.HandlerFunc {
 
 		c.JSON(200, models.NewSuccessResponse("Configuration reloaded successfully", gin.H{
 			"timestamp": time.Now().Unix(),
+		}))
+	}
+}
+
+// handleGetRequestLogs 处理获取请求日志
+func handleGetRequestLogs(lb *core.LoadBalancer) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		limitStr := c.DefaultQuery("limit", "50")
+		offsetStr := c.DefaultQuery("offset", "0")
+
+		limit, _ := strconv.Atoi(limitStr)
+		offset, _ := strconv.Atoi(offsetStr)
+
+		if limit > 100 {
+			limit = 100
+		}
+		if limit < 1 {
+			limit = 50
+		}
+		if offset < 0 {
+			offset = 0
+		}
+
+		var logs []models.RequestLog
+		var total int64
+
+		db := lb.GetDB()
+		if err := db.Model(&models.RequestLog{}).Count(&total).Error; err != nil {
+			c.JSON(500, models.NewErrorResponse("Failed to count logs: "+err.Error()))
+			return
+		}
+
+		if err := db.Order("created_at desc").Limit(limit).Offset(offset).Find(&logs).Error; err != nil {
+			c.JSON(500, models.NewErrorResponse("Failed to query logs: "+err.Error()))
+			return
+		}
+
+		c.JSON(200, models.NewSuccessResponse("Logs retrieved successfully", gin.H{
+			"total":  total,
+			"limit":  limit,
+			"offset": offset,
+			"logs":   logs,
+		}))
+	}
+}
+
+// handleGetSystemLogs 处理获取系统文件日志
+func handleGetSystemLogs() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		content, err := os.ReadFile("gateway.log")
+		if err != nil {
+			// 如果文件不存在，返回空
+			c.JSON(200, models.NewSuccessResponse("System logs retrieved", gin.H{"logs": ""}))
+			return
+		}
+
+		// 简单处理：返回最后 10000 字节，防止文件过大
+		start := 0
+		if len(content) > 10000 {
+			start = len(content) - 10000
+		}
+
+		c.JSON(200, models.NewSuccessResponse("System logs retrieved", gin.H{
+			"logs": string(content[start:]),
 		}))
 	}
 }
