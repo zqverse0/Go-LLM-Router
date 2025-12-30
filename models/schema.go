@@ -74,6 +74,25 @@ type ModelStats struct {
 	ModelConfig ModelConfig `gorm:"foreignKey:ModelConfigID" json:"model_config,omitempty"`
 }
 
+// RequestLog 请求日志 (New for Async Logging)
+type RequestLog struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	RequestID   string    `gorm:"index" json:"request_id"`
+	Time        time.Time `gorm:"index" json:"time"`
+	Method      string    `json:"method"`
+	Path        string    `json:"path"`
+	Status      int       `json:"status"`
+	LatencyMs   float64   `json:"latency_ms"`
+	ClientIP    string    `json:"client_ip"`
+	ModelGroup  string    `json:"model_group"`
+	ModelID     string    `json:"model_id"` // Upstream Model
+	Provider    string    `json:"provider"`
+	TokensIn    int       `json:"tokens_in"`
+	TokensOut   int       `json:"tokens_out"`
+	UserAgent   string    `json:"user_agent"`
+	ErrorMsg    string    `json:"error_msg,omitempty"`
+}
+
 // RoutingInfo 路由信息（不存储到数据库）
 type RoutingInfo struct {
 	GroupID        string `json:"group_id"`
@@ -91,18 +110,16 @@ func AutoMigrate(db *gorm.DB) error {
 		&ModelConfig{},
 		&APIKey{},
 		&ModelStats{},
+		&RequestLog{}, // Add RequestLog to migration
 	)
 }
 
 // GenerateAdminKey 生成管理员密钥
 func GenerateAdminKey() string {
-	// 生成 16 字节的随机字符串
 	bytes := make([]byte, 16)
 	rand.Read(bytes)
 	return "sk-admin-" + hex.EncodeToString(bytes)
 }
-
-// GenerateGatewayToken 生成网关访问令牌
 
 // InitializeDefaultData 初始化默认数据
 func InitializeDefaultData(db *gorm.DB) (string, error) {
