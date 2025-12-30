@@ -20,12 +20,11 @@ import (
 type ProxyHandlerStateless struct {
 	router      *StatelessModelRouter
 	logger      *logrus.Logger
-	asyncLogger *AsyncRequestLogger // 引入异步日志记录器
+	asyncLogger *AsyncRequestLogger
 }
 
 // NewProxyHandlerStateless 创建新的无状态代理处理器
 func NewProxyHandlerStateless(router *StatelessModelRouter, logger *logrus.Logger, asyncLogger *AsyncRequestLogger) *ProxyHandlerStateless {
-	// 确保全局客户端已初始化
 	if GlobalHTTPClient == nil {
 		InitHTTPClient()
 	}
@@ -62,7 +61,6 @@ func (h *ProxyHandlerStateless) getAdapter(provider string) adapter.ProviderAdap
 	case "openai":
 		return adapter.NewOpenAIAdapter()
 	default:
-		// 默认使用 OpenAI 透传
 		return adapter.NewOpenAIAdapter()
 	}
 }
@@ -73,7 +71,6 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 	clientIP := getClientIP(c)
 	requestID := fmt.Sprintf("%d", startTime.UnixNano())
 
-	// 准备日志对象
 	reqLog := &models.RequestLog{
 		RequestID:  requestID,
 		Time:       startTime,
@@ -94,7 +91,6 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 
 	maxAttempts := h.router.CalculateMaxRetries(routing.GroupID)
 	
-	// 游标初始化逻辑...
 	var modelCursor, keyCursor int
 	hasAvailableKeys := false
 	for _, model := range group.Models {
@@ -124,7 +120,6 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 		}
 	}
 
-	// 核心循环
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		selectedModelIndex := modelCursor % len(group.Models)
 		selectedModel := group.Models[selectedModelIndex]
@@ -141,11 +136,17 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 
 		selectedKeyIndex := keyCursor % len(modelKeys)
 		selectedKey := modelKeys[selectedKeyIndex]
-		targetURL := strings.TrimSpace(selectedModel.UpstreamURL)
+		
+		// 【Task 2】 检查 Key 是否可用
+		if !h.router.keyManager.IsAvailable(selectedKey) {
+			h.logger.Warnf("🚫 Skipping cooldown/dead key: %s", MaskKey(selectedKey))
+			h.advanceCursors(&modelCursor, &keyCursor, len(group.Models), len(modelKeys), routing.IsPinned, group.Strategy)
+			continue
+		}
 
+		targetURL := strings.TrimSpace(selectedModel.UpstreamURL)
 		h.logger.Infof("🎯 Attempt %d/%d: Using [%s] (%s) -> %s", attempt+1, maxAttempts, selectedModel.UpstreamModel, selectedModel.ProviderName, targetURL)
 
-		// 【Task C】 使用适配器创建请求
 		providerAdapter := h.getAdapter(selectedModel.ProviderName)
 		req, err := providerAdapter.ConvertRequest(c, requestData, selectedKey, targetURL)
 		
@@ -155,7 +156,6 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 			continue
 		}
 
-		// 【Task A】 使用全局 Client
 		resp, err := GlobalHTTPClient.Do(req)
 		latency := time.Since(startTime).Seconds() * 1000 // ms
 
@@ -165,33 +165,29 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 			continue
 		}
 
-		// 填充日志
 		reqLog.ModelID = selectedModel.UpstreamModel
 		reqLog.Provider = selectedModel.ProviderName
 		reqLog.LatencyMs = latency
 		reqLog.Status = resp.StatusCode
 
 		if resp.StatusCode == 200 {
-			// 成功
 			h.router.UpdateStats(routing.GroupID, selectedModelIndex, true, latency)
 			
-			// 【Task C】 使用适配器处理响应
 			if err := providerAdapter.HandleResponse(c, resp, requestData.Stream); err != nil {
 				h.logger.Errorf("Response handling failed: %v", err)
 			}
 			
 			resp.Body.Close()
-			
-			// 【Task B】 异步记录日志
 			if h.asyncLogger != nil {
 				h.asyncLogger.Log(reqLog)
 			}
 			return
 		} else {
-			// 失败
 			h.router.UpdateStats(routing.GroupID, selectedModelIndex, false, latency)
 			
-			// 读取错误并记录
+			// 【Task 2】 上报 Key 状态
+			h.router.ReportKeyStatus(selectedKey, resp.StatusCode)
+
 			errorBody, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			reqLog.ErrorMsg = string(errorBody)
@@ -206,7 +202,6 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 
 	h.sendFinalErrorResponse(c, 502, nil, fmt.Errorf("all attempts failed"))
 	
-	// 记录最终失败日志
 	reqLog.Status = 502
 	reqLog.ErrorMsg = "All attempts failed"
 	if h.asyncLogger != nil {
@@ -214,7 +209,6 @@ func (h *ProxyHandlerStateless) ProxyRequest(c *gin.Context, routing *models.Rou
 	}
 }
 
-// sendFinalErrorResponse (复用原有逻辑，略微简化)
 func (h *ProxyHandlerStateless) sendFinalErrorResponse(c *gin.Context, statusCode int, resp *http.Response, err error) {
 	c.JSON(statusCode, gin.H{
 		"error": gin.H{
@@ -224,7 +218,6 @@ func (h *ProxyHandlerStateless) sendFinalErrorResponse(c *gin.Context, statusCod
 	})
 }
 
-// advanceCursors (复用原有逻辑)
 func (h *ProxyHandlerStateless) advanceCursors(modelCursor, keyCursor *int, totalModels, totalKeys int, isPinned bool, strategy string) bool {
 	if *keyCursor < totalKeys-1 {
 		*keyCursor++
@@ -238,7 +231,6 @@ func (h *ProxyHandlerStateless) advanceCursors(modelCursor, keyCursor *int, tota
 	return *modelCursor < totalModels || strategy == "round_robin"
 }
 
-// skipToNextModel (复用原有逻辑)
 func (h *ProxyHandlerStateless) skipToNextModel(modelCursor, keyCursor *int, totalModels int, isPinned bool, strategy string) bool {
 	if isPinned {
 		return false
@@ -248,7 +240,6 @@ func (h *ProxyHandlerStateless) skipToNextModel(modelCursor, keyCursor *int, tot
 	return *modelCursor < totalModels || strategy == "round_robin"
 }
 
-// HandleProxyRequest (Gin Handler wrapper)
 func (h *ProxyHandlerStateless) HandleProxyRequest(router *StatelessModelRouter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var requestData models.ChatCompletionRequest

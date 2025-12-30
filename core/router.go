@@ -37,6 +37,8 @@ type StatelessModelRouter struct {
 	stats           map[string]map[int]*models.ModelStats // group_id -> model_index -> stats
 	// 网关设置
 	gatewaySettings *models.GatewaySettings
+	// Key 管理器引用
+	keyManager *KeyStateManager
 }
 
 // NewStatelessModelRouter 创建新的无状态模型路由器
@@ -48,7 +50,7 @@ func NewStatelessModelRouter(db *gorm.DB, logger *logrus.Logger) (*StatelessMode
 		modelConfigMap: make(map[string][]*models.ModelConfig),
 		keyMap:         make(map[string][]string),
 		stats:          make(map[string]map[int]*models.ModelStats),
-		// rrCounters 已移除，改用全局变量
+		keyManager:     GlobalKeyManager, // 使用全局KeyManager
 	}
 
 	// 加载初始数据
@@ -77,7 +79,7 @@ func (r *StatelessModelRouter) loadData() error {
 		return fmt.Errorf("failed to load model groups: %w", err)
 	}
 
-	// 清空缓存（注意：不包含 rrCounters，因为现在是全局变量）
+	// 清空缓存
 	r.modelGroups = make(map[string]*models.ModelGroup)
 	r.modelConfigMap = make(map[string][]*models.ModelConfig)
 	r.keyMap = make(map[string][]string)
@@ -93,7 +95,6 @@ func (r *StatelessModelRouter) loadData() error {
 			model := &group.Models[j]
 			r.modelConfigMap[group.GroupID][j] = model
 
-			// 使用 model_config_id 作为key，确保唯一性
 			modelConfigID := fmt.Sprintf("%d", model.ID)
 			keys := make([]string, len(model.APIKeys))
 			for k := range model.APIKeys {
@@ -203,15 +204,12 @@ func (r *StatelessModelRouter) GetTotalKeys(model *models.ModelConfig) int {
 
 // getGroupCounter 获取或初始化组计数器（内部方法）
 func (r *StatelessModelRouter) getGroupCounter(groupID string) *uint64 {
-	// 获取或惰性初始化全局计数器
 	globalRRMutex.RLock()
 	rrCounter, counterExists := globalRRCounters[groupID]
 	globalRRMutex.RUnlock()
 
 	if !counterExists {
-		// 惰性初始化计数器（双重检查锁定）
 		globalRRMutex.Lock()
-		// 再次检查，防止并发初始化
 		if rrCounter, counterExists = globalRRCounters[groupID]; !counterExists {
 			rrCounter = new(uint64)
 			globalRRCounters[groupID] = rrCounter
@@ -236,11 +234,9 @@ func (r *StatelessModelRouter) GetInitialModelIndex(groupID string) int {
 
 	switch group.Strategy {
 	case "round_robin":
-		// 递增全局计数器并返回模型索引
 		rrCounter := r.getGroupCounter(groupID)
-		newCounter := atomic.AddUint64(rrCounter, 1) // 递增计数器
-		modelIdx := int((newCounter - 1) % uint64(totalModels)) // 0-based索引
-
+		newCounter := atomic.AddUint64(rrCounter, 1)
+		modelIdx := int((newCounter - 1) % uint64(totalModels))
 		return modelIdx
 	case "fallback":
 		return 0
@@ -250,6 +246,7 @@ func (r *StatelessModelRouter) GetInitialModelIndex(groupID string) int {
 }
 
 // GetInitialKeyIndex 获取初始Key索引（用于 round_robin 策略的Key轮询）
+// 【优化】: 增加智能过滤，尽量返回一个可用的 Key
 func (r *StatelessModelRouter) GetInitialKeyIndex(modelID uint) int {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -274,38 +271,37 @@ func (r *StatelessModelRouter) GetInitialKeyIndex(modelID uint) int {
 		return 0
 	}
 
-	// 获取模型的Key信息
 	modelConfigID := fmt.Sprintf("%d", modelID)
 	keys, exists := r.keyMap[modelConfigID]
-	if !exists {
+	if !exists || len(keys) == 0 {
 		return 0
 	}
 
 	totalKeys := len(keys)
-	if totalKeys == 0 {
-		return 0
-	}
 
-	switch groupStrategy {
-	case "round_robin":
-		// 🔑 关键：读取同一个全局计数器的当前值（不递增）
+	// 简单的轮询逻辑基础
+	baseIdx := 0
+	if groupStrategy == "round_robin" {
 		globalRRMutex.RLock()
 		rrCounter, counterExists := globalRRCounters[groupID]
 		globalRRMutex.RUnlock()
-
-		if !counterExists {
-			return 0
+		if counterExists {
+			currentCounter := atomic.LoadUint64(rrCounter)
+			baseIdx = int(currentCounter % uint64(totalKeys))
 		}
-
-		currentCounter := atomic.LoadUint64(rrCounter)
-		keyIdx := int(currentCounter % uint64(totalKeys))
-
-		return keyIdx
-	case "fallback":
-		return 0
-	default:
-		return 0
 	}
+
+	// 【智能 Key 选择】
+	// 从 baseIdx 开始尝试找到第一个可用的 Key
+	// 如果找不到（所有都 cooldown），就 fallback 到 baseIdx，让上层 ProxyHandler 去处理具体的失败
+	for i := 0; i < totalKeys; i++ {
+		idx := (baseIdx + i) % totalKeys
+		if r.keyManager.IsAvailable(keys[idx]) {
+			return idx
+		}
+	}
+
+	return baseIdx
 }
 
 // CalculateMaxRetries 计算动态最大重试次数
@@ -315,7 +311,7 @@ func (r *StatelessModelRouter) CalculateMaxRetries(groupID string) int {
 
 	models, exists := r.modelConfigMap[groupID]
 	if !exists || len(models) == 0 {
-		return 3 // 默认值
+		return 3
 	}
 
 	totalKeys := 0
@@ -327,7 +323,6 @@ func (r *StatelessModelRouter) CalculateMaxRetries(groupID string) int {
 		}
 	}
 
-	// 动态计算：总Key数 * 1.5，至少3次，最多12次
 	maxRetries := int(float64(totalKeys) * 1.5)
 	if maxRetries < 3 {
 		maxRetries = 3
@@ -336,7 +331,6 @@ func (r *StatelessModelRouter) CalculateMaxRetries(groupID string) int {
 		maxRetries = 12
 	}
 
-	r.logger.Infof("Calculated max retries for group %s: %d (total keys: %d)", groupID, maxRetries, totalKeys)
 	return maxRetries
 }
 
@@ -346,71 +340,50 @@ func (r *StatelessModelRouter) ParseModelRouting(modelInput string) *models.Rout
 		return &models.RoutingInfo{GroupID: modelInput, IsPinned: false}
 	}
 
-	// 检查是否包含分隔符
 	if !strings.Contains(modelInput, "$") {
-		// 【新增】智能查找逻辑：先尝试作为模型ID查找，再尝试作为组ID查找
-		// 1. 先尝试作为模型ID查找（通过检查所有组的所有模型）
 		for groupID, modelGroup := range r.GetAllModelGroups() {
 			for idx, model := range modelGroup.Models {
 				if model.UpstreamModel == modelInput {
-					// 找到模型，使用其所属的组
-					modelIndex := idx // 使用数组索引作为模型索引
-					r.logger.Infof("[INFO] Smart Routing | Model: %s -> Group: %s | Index: %d", modelInput, groupID, idx)
+					modelIndex := idx
 					return &models.RoutingInfo{
 						GroupID:    groupID,
 						ModelIndex: &modelIndex,
-						IsPinned:   true, // 直接使用特定模型
+						IsPinned:   true,
 					}
 				}
 			}
 		}
 
-		// 2. 尝试作为组ID查找
 		if _, err := r.GetModelGroup(modelInput); err == nil {
-			// 找到组，使用组的第一个模型
-			r.logger.Infof("[INFO] Smart Routing | Group: %s -> Using first available model", modelInput)
 			return &models.RoutingInfo{
 				GroupID:  modelInput,
-				IsPinned: false, // 使用组的默认轮询/策略
+				IsPinned: false,
 			}
 		}
 
-		// 3. 都没找到，返回原始值（可能导致后续错误，但会记录日志）
-		r.logger.Warnf("[WARN] Smart Routing | Not Found: %s | Will use as group ID (may fail)", modelInput)
 		return &models.RoutingInfo{GroupID: modelInput, IsPinned: false}
 	}
 
-	// 分割字符串
 	parts := strings.SplitN(modelInput, "$", 2)
 	if len(parts) != 2 {
 		return &models.RoutingInfo{GroupID: modelInput, IsPinned: false}
 	}
 
 	groupID, indexStr := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-
-	// 验证组名不为空
 	if groupID == "" {
 		return &models.RoutingInfo{GroupID: modelInput, IsPinned: false}
 	}
 
-	// 尝试解析索引
 	userIndex, err := strconv.Atoi(indexStr)
-	if err != nil {
-		r.logger.Warnf("Invalid routing index '%s' (not a number), ignoring routing suffix", indexStr)
+	if err != nil || userIndex < 1 {
 		return &models.RoutingInfo{GroupID: groupID, IsPinned: false}
 	}
 
-	if userIndex < 1 {
-		r.logger.Warnf("Invalid routing index %d (must be >= 1), ignoring routing suffix", userIndex)
-		return &models.RoutingInfo{GroupID: groupID, IsPinned: false}
-	}
-
-	// 转换为0-based索引
 	targetIndex := userIndex - 1
 	return &models.RoutingInfo{
 		GroupID:    groupID,
 		ModelIndex: &targetIndex,
-		IsPinned:   true, // 显式指定索引时，启用锁定模式
+		IsPinned:   true,
 	}
 }
 
@@ -423,8 +396,6 @@ func (r *StatelessModelRouter) GetModelGroup(groupID string) (*models.ModelGroup
 	if !exists {
 		return nil, fmt.Errorf("model group '%s' not found", groupID)
 	}
-
-	// 创建深拷贝
 	groupCopy := *group
 	return &groupCopy, nil
 }
@@ -444,13 +415,11 @@ func (r *StatelessModelRouter) IsServerError(statusCode int) bool {
 
 // IsHardError 判断是否为硬错误（配置级错误）
 func (r *StatelessModelRouter) IsHardError(statusCode int, err error) bool {
-	// 检查状态码
 	switch statusCode {
 	case 400, 404, 405:
-		return true // Bad Request, Not Found, Method Not Allowed
+		return true
 	}
 
-	// 检查网络错误
 	if err != nil {
 		errStr := err.Error()
 		hardErrorPatterns := []string{
@@ -462,7 +431,6 @@ func (r *StatelessModelRouter) IsHardError(statusCode int, err error) bool {
 			"ssl certificate",
 			"tls handshake",
 		}
-
 		errLower := strings.ToLower(errStr)
 		for _, pattern := range hardErrorPatterns {
 			if strings.Contains(errLower, pattern) {
@@ -474,16 +442,27 @@ func (r *StatelessModelRouter) IsHardError(statusCode int, err error) bool {
 	return false
 }
 
-// 统计相关方法
+// 【新增】ReportKeyStatus 报告Key的使用状态，触发智能冷却
+func (r *StatelessModelRouter) ReportKeyStatus(key string, statusCode int) {
+	if statusCode == 429 {
+		// 触发 60s 冷却
+		r.keyManager.MarkCooldown(key, 60*time.Second)
+		r.logger.Warnf("🔥 Key %s cooldown triggered (429 Too Many Requests)", MaskKey(key))
+	} else if statusCode == 401 || statusCode == 403 {
+		// 标记为死亡
+		r.keyManager.MarkDead(key)
+		r.logger.Errorf("💀 Key %s marked as DEAD (Auth Error %d)", MaskKey(key), statusCode)
+	}
+}
+
+// UpdateStats 更新统计信息
 func (r *StatelessModelRouter) UpdateStats(groupID string, modelIndex int, success bool, latency float64) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	// 获取或创建统计记录
-	var stat *models.ModelStats
 	if _, exists := r.stats[groupID][modelIndex]; !exists {
 		r.stats[groupID][modelIndex] = &models.ModelStats{
-			ModelGroupID: 0, // 将在数据库查询时设置
+			ModelGroupID: 0,
 			ModelIndex:   modelIndex,
 			Success:      0,
 			Error:        0,
@@ -491,9 +470,8 @@ func (r *StatelessModelRouter) UpdateStats(groupID string, modelIndex int, succe
 			RequestCount: 0,
 		}
 	}
-	stat = r.stats[groupID][modelIndex]
+	stat := r.stats[groupID][modelIndex]
 
-	// 更新内存统计
 	if success {
 		stat.Success++
 	} else {
@@ -502,47 +480,30 @@ func (r *StatelessModelRouter) UpdateStats(groupID string, modelIndex int, succe
 	stat.TotalLatency += latency
 	stat.RequestCount++
 
-	// 异步更新数据库
 	go func() {
 		var group models.ModelGroup
 		if err := r.db.Where("group_id = ?", groupID).First(&group).Error; err != nil {
-			r.logger.Errorf("Failed to find model group %s: %v", groupID, err)
 			return
 		}
-
 		stat.ModelGroupID = group.ID
-		if err := r.db.Save(stat).Error; err != nil {
-			r.logger.Errorf("Failed to update stats in database: %v", err)
-		}
+		r.db.Save(stat)
 	}()
 
 	return nil
 }
 
+// GetStats 获取统计
 func (r *StatelessModelRouter) GetStats(groupID string, modelIndex int) *models.ModelStats {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
 	if _, exists := r.stats[groupID]; !exists {
-		return &models.ModelStats{
-			Success:      0,
-			Error:        0,
-			TotalLatency: 0,
-			RequestCount: 0,
-		}
+		return &models.ModelStats{}
 	}
-
 	stat, exists := r.stats[groupID][modelIndex]
 	if !exists {
-		return &models.ModelStats{
-			Success:      0,
-			Error:        0,
-			TotalLatency: 0,
-			RequestCount: 0,
-		}
+		return &models.ModelStats{}
 	}
-
-	// 创建副本避免外部修改
 	return &models.ModelStats{
 		Success:      stat.Success,
 		Error:        stat.Error,
@@ -564,7 +525,6 @@ func (r *StatelessModelRouter) GetAllModelGroups() map[string]*models.ModelGroup
 
 	result := make(map[string]*models.ModelGroup)
 	for k, v := range r.modelGroups {
-		// 创建深拷贝
 		groupCopy := *v
 		result[k] = &groupCopy
 	}
@@ -603,7 +563,7 @@ func (r *StatelessModelRouter) GetTotalStats() map[string]*models.AdminStatsResp
 			}
 
 			adminModels[i] = models.AdminModelStats{
-				Index:         i + 1, // 1-based for user display
+				Index:         i + 1,
 				Provider:      model.ProviderName,
 				UpstreamModel: model.UpstreamModel,
 				Success:       stats.Success,
@@ -629,7 +589,7 @@ func (r *StatelessModelRouter) GetTotalStats() map[string]*models.AdminStatsResp
 func (r *StatelessModelRouter) UpgradeToWebSocket(c *gin.Context) (*websocket.Conn, error) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
-			return true // 允许所有来源，生产环境应该更严格
+			return true
 		},
 	}
 	return upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -646,8 +606,21 @@ func (r *StatelessModelRouter) GetModelKeys(modelID uint) ([]string, error) {
 		return nil, fmt.Errorf("no keys found for model ID %d", modelID)
 	}
 
-	// 返回副本，避免外部修改
+	// 【新增】智能过滤：只返回可用的 Key
+	// 注意：这里返回所有 Key，让 GetInitialKeyIndex 去决定顺序
+	// 或者这里可以做一个简单的过滤？
+	// 为了不破坏原有逻辑（比如轮询），这里还是返回所有 Key，
+	// 但调用方应该使用 IsAvailable 来检查
+	
 	result := make([]string, len(keys))
 	copy(result, keys)
 	return result, nil
+}
+
+// MaskKey 简单的脱敏帮助函数
+func MaskKey(key string) string {
+	if len(key) <= 8 {
+		return "***"
+	}
+	return key[:4] + "..." + key[len(key)-4:]
 }

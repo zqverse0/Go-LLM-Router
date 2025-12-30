@@ -6,10 +6,12 @@ import (
 	"llm-gateway/core"
 	"llm-gateway/models"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/time/rate"
 	"gorm.io/gorm"
 )
 
@@ -65,13 +67,10 @@ func AdminAuthMiddleware() gin.HandlerFunc {
 }
 
 // RequestLoggerMiddleware 异步请求日志中间件
-// 修改：将日志发送到 AsyncRequestLogger Channel，而不是直接写入 Logrus
 func RequestLoggerMiddleware(asyncLogger *core.AsyncRequestLogger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		
-		// 备份 Body 以便读取 (Log 可能会用到，但 ProxyHandler 内部已经构建了更详细的 Log)
-		// 这里主要是为了捕获那些没有经过 ProxyHandler 的请求（如 404，或管理接口）
 		var bodyBytes []byte
 		if c.Request.Body != nil {
 			bodyBytes, _ = io.ReadAll(c.Request.Body)
@@ -84,10 +83,6 @@ func RequestLoggerMiddleware(asyncLogger *core.AsyncRequestLogger) gin.HandlerFu
 		statusCode := c.Writer.Status()
 		clientIP := c.ClientIP()
 
-		// 只记录非 Proxy 路径的请求（Proxy 路径由 ProxyHandler 内部记录更详细的信息）
-		// 或者记录所有请求作为基础 Access Log
-		// 这里演示记录所有非 200 或管理接口的访问
-		
 		if asyncLogger != nil && (statusCode >= 400 || strings.HasPrefix(c.Request.URL.Path, "/admin")) {
 			logEntry := &models.RequestLog{
 				Time:       start,
@@ -99,10 +94,64 @@ func RequestLoggerMiddleware(asyncLogger *core.AsyncRequestLogger) gin.HandlerFu
 				UserAgent:  c.Request.UserAgent(),
 			}
 			if statusCode >= 400 && len(bodyBytes) > 0 {
-				logEntry.ErrorMsg = string(bodyBytes) // 简单记录 Body 作为错误上下文
+				logEntry.ErrorMsg = string(bodyBytes)
 			}
 			
 			asyncLogger.Log(logEntry)
 		}
+	}
+}
+
+// IPRateLimiter 简单的 IP 限流器
+type IPRateLimiter struct {
+	ips    map[string]*rate.Limiter
+	mu     sync.Mutex
+	rate   rate.Limit
+	burst  int
+}
+
+func NewIPRateLimiter(r rate.Limit, b int) *IPRateLimiter {
+	return &IPRateLimiter{
+		ips:   make(map[string]*rate.Limiter),
+		rate:  r,
+		burst: b,
+	}
+}
+
+// GetLimiter 获取或创建 IP 对应的限流器
+func (i *IPRateLimiter) GetLimiter(ip string) *rate.Limiter {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	limiter, exists := i.ips[ip]
+	if !exists {
+		limiter = rate.NewLimiter(i.rate, i.burst)
+		i.ips[ip] = limiter
+	}
+
+	return limiter
+}
+
+// 全局限流器实例 (每秒 10 次请求，突发 20 次)
+var globalLimiter = NewIPRateLimiter(10, 20)
+
+// RateLimitMiddleware IP 限流中间件
+func RateLimitMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		clientIP := c.ClientIP()
+		limiter := globalLimiter.GetLimiter(clientIP)
+
+		if !limiter.Allow() {
+			logrus.Warnf("Rate limit exceeded for IP: %s", clientIP)
+			c.AbortWithStatusJSON(429, gin.H{
+				"error": gin.H{
+					"message": "Too Many Requests",
+					"type":    "rate_limit_error",
+				},
+			})
+			return
+		}
+
+		c.Next()
 	}
 }

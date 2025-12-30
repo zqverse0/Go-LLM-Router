@@ -58,6 +58,9 @@ func main() {
 	// 添加中间件
 	engine.Use(gin.RecoveryWithWriter(log.Writer()))
 	engine.Use(corsMiddleware())
+	
+	// 【Task 3】 添加 IP 限流中间件
+	engine.Use(RateLimitMiddleware())
 
 	// 【Task B】 为业务接口单独添加请求日志中间件 (使用异步日志器)
 	api := engine.Group("/")
