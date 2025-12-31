@@ -102,34 +102,58 @@ func RequestLoggerMiddleware(asyncLogger *core.AsyncRequestLogger) gin.HandlerFu
 	}
 }
 
-// IPRateLimiter 简单的 IP 限流器
+// client 包装限流器及其最后访问时间
+type client struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
+// IPRateLimiter 带有自动清理机制的 IP 限流器 (FIX: 修复内存泄漏)
 type IPRateLimiter struct {
-	ips    map[string]*rate.Limiter
-	mu     sync.Mutex
-	rate   rate.Limit
-	burst  int
+	clients map[string]*client
+	mu      sync.Mutex
+	rate    rate.Limit
+	burst   int
 }
 
 func NewIPRateLimiter(r rate.Limit, b int) *IPRateLimiter {
-	return &IPRateLimiter{
-		ips:   make(map[string]*rate.Limiter),
-		rate:  r,
-		burst: b,
+	i := &IPRateLimiter{
+		clients: make(map[string]*client),
+		rate:    r,
+		burst:   b,
 	}
+	// 启动后台清理协程
+	go i.cleanupClients()
+	return i
 }
 
-// GetLimiter 获取或创建 IP 对应的限流器
+// GetLimiter 获取或创建 IP 对应的限流器，并更新访问时间
 func (i *IPRateLimiter) GetLimiter(ip string) *rate.Limiter {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	limiter, exists := i.ips[ip]
+	c, exists := i.clients[ip]
 	if !exists {
-		limiter = rate.NewLimiter(i.rate, i.burst)
-		i.ips[ip] = limiter
+		c = &client{limiter: rate.NewLimiter(i.rate, i.burst)}
+		i.clients[ip] = c
 	}
 
-	return limiter
+	c.lastSeen = time.Now()
+	return c.limiter
+}
+
+// cleanupClients 每分钟清理一次超过 3 分钟未活跃的 IP
+func (i *IPRateLimiter) cleanupClients() {
+	for {
+		time.Sleep(time.Minute)
+		i.mu.Lock()
+		for ip, c := range i.clients {
+			if time.Since(c.lastSeen) > 3*time.Minute {
+				delete(i.clients, ip)
+			}
+		}
+		i.mu.Unlock()
+	}
 }
 
 // 全局限流器实例 (每秒 10 次请求，突发 20 次)

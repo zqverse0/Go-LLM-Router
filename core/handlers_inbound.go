@@ -33,7 +33,7 @@ func NewResponseInterceptor(isStream bool) *ResponseInterceptor {
 		headers:    make(http.Header),
 		statusCode: 200,
 		isStream:   isStream,
-		streamChan: make(chan []byte, 100), // Buffer to avoid blocking
+		streamChan: make(chan []byte, 1024), // [FIX-03] Increased buffer to avoid blocking
 	}
 }
 
@@ -123,22 +123,29 @@ func (h *ProxyHandler) HandleClaudeMessage(c *gin.Context) {
 		var lineBuffer string
 
 		for chunk := range interceptor.streamChan {
-			s := string(chunk)
-			lineBuffer += s
+			lineBuffer += string(chunk)
 			
 			for {
+				// [FIX-02] 支持 \n\n 和 \r\n\r\n 多种分隔符
 				idx := strings.Index(lineBuffer, "\n\n")
+				delimLen := 2
+				if rIdx := strings.Index(lineBuffer, "\r\n\r\n"); rIdx != -1 && (idx == -1 || rIdx < idx) {
+					idx = rIdx
+					delimLen = 4
+				}
+
 				if idx == -1 {
 					break
 				}
 				
 				fullBlock := lineBuffer[:idx]
-				lineBuffer = lineBuffer[idx+2:]
+				lineBuffer = lineBuffer[idx+delimLen:]
 				
 				// Parse Block
 				// Expected: "data: {...}" or "data: [DONE]"
-				lines := strings.Split(fullBlock, "\n")
+				lines := strings.Split(strings.ReplaceAll(fullBlock, "\r\n", "\n"), "\n")
 				for _, line := range lines {
+					line = strings.TrimSpace(line)
 					if strings.HasPrefix(line, "data: ") {
 						dataStr := strings.TrimPrefix(line, "data: ")
 						if dataStr == "[DONE]" {
@@ -226,19 +233,26 @@ func (h *ProxyHandler) HandleGeminiGenerateContent(c *gin.Context) {
         
         var lineBuffer string
         for chunk := range interceptor.streamChan {
-            s := string(chunk)
-            lineBuffer += s
+            lineBuffer += string(chunk)
             
              for {
+				// [FIX-02] 支持多种分隔符
 				idx := strings.Index(lineBuffer, "\n\n")
+				delimLen := 2
+				if rIdx := strings.Index(lineBuffer, "\r\n\r\n"); rIdx != -1 && (idx == -1 || rIdx < idx) {
+					idx = rIdx
+					delimLen = 4
+				}
+
 				if idx == -1 {
 					break
 				}
 				fullBlock := lineBuffer[:idx]
-				lineBuffer = lineBuffer[idx+2:]
+				lineBuffer = lineBuffer[idx+delimLen:]
                 
-                lines := strings.Split(fullBlock, "\n")
+                lines := strings.Split(strings.ReplaceAll(fullBlock, "\r\n", "\n"), "\n")
 				for _, line := range lines {
+                    line = strings.TrimSpace(line)
                     if strings.HasPrefix(line, "data: ") {
                         dataStr := strings.TrimPrefix(line, "data: ")
                         if dataStr == "[DONE]" { continue }

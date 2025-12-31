@@ -622,7 +622,7 @@
 
     <!-- Integration Modal -->
     <div id="integrationModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm hidden">
-        <div class="bg-card text-card-foreground rounded-xl shadow-2xl w-full max-w-4xl mx-4 animate-in border flex flex-col max-h-[90vh]">
+        <div class="bg-card text-card-foreground rounded-xl shadow-2xl w-full max-w-5xl mx-4 animate-in border flex flex-col max-h-[90vh]">
             <div class="px-6 py-4 border-b flex justify-between items-center bg-muted/20">
                 <div class="flex items-center gap-2">
                     <div class="p-2 bg-purple-100 text-purple-600 rounded-md">
@@ -641,58 +641,83 @@
                 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <!-- OpenAI Card -->
-                    <div class="border rounded-xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+                    <div class="border rounded-xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all relative overflow-hidden group flex flex-col">
                         <div class="absolute top-0 right-0 p-4 opacity-10">
                             <i data-lucide="bot" class="w-16 h-16 text-green-500"></i>
                         </div>
                         <h4 class="font-semibold text-green-600 mb-4 flex items-center gap-2">
                             OpenAI Compatible
                         </h4>
-                        <div class="space-y-4 relative z-10">
+                        <div class="space-y-4 relative z-10 flex-1">
                             <div>
                                 <div class="flex justify-between items-center mb-1.5">
-                                    <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Base URL</span>
+                                    <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Python/Node SDK Base URL</span>
                                     <button onclick="copyToClipboard(document.getElementById('baseOpenAIUrl').textContent, this)" class="text-muted-foreground hover:text-foreground"><i data-lucide="copy" class="w-3 h-3"></i></button>
                                 </div>
                                 <div class="bg-muted/50 border rounded-md p-2 text-[10px] font-mono text-foreground break-all" id="baseOpenAIUrl"></div>
+                                <p class="text-[10px] text-muted-foreground mt-1">SDK automatically adds <code class="bg-muted px-1 rounded">/chat/completions</code></p>
+                            </div>
+                            <div class="pt-2 border-t border-dashed">
+                                <div class="flex justify-between items-center mb-1.5">
+                                    <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Raw HTTP Endpoint</span>
+                                    <button onclick="copyToClipboard(document.getElementById('rawOpenAIUrl').textContent, this)" class="text-muted-foreground hover:text-foreground"><i data-lucide="copy" class="w-3 h-3"></i></button>
+                                </div>
+                                <div class="bg-muted/50 border rounded-md p-2 text-[10px] font-mono text-foreground break-all" id="rawOpenAIUrl"></div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Claude Card -->
-                    <div class="border rounded-xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+                    <div class="border rounded-xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all relative overflow-hidden group flex flex-col">
                         <div class="absolute top-0 right-0 p-4 opacity-10">
                             <i data-lucide="sparkles" class="w-16 h-16 text-purple-500"></i>
                         </div>
                         <h4 class="font-semibold text-purple-600 mb-4 flex items-center gap-2">
                             Anthropic Claude
                         </h4>
-                        <div class="space-y-4 relative z-10">
+                        <div class="space-y-4 relative z-10 flex-1">
                             <div>
                                 <div class="flex justify-between items-center mb-1.5">
-                                    <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Base URL</span>
+                                    <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Python/Node SDK Base URL</span>
                                     <button onclick="copyToClipboard(document.getElementById('baseClaudeUrl').textContent, this)" class="text-muted-foreground hover:text-foreground"><i data-lucide="copy" class="w-3 h-3"></i></button>
                                 </div>
                                 <div class="bg-muted/50 border rounded-md p-2 text-[10px] font-mono text-foreground break-all" id="baseClaudeUrl"></div>
+                                <p class="text-[10px] text-muted-foreground mt-1">SDK automatically adds <code class="bg-muted px-1 rounded">/messages</code></p>
+                            </div>
+                            <div class="pt-2 border-t border-dashed">
+                                <div class="flex justify-between items-center mb-1.5">
+                                    <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Raw HTTP Endpoint</span>
+                                    <button onclick="copyToClipboard(document.getElementById('rawClaudeUrl').textContent, this)" class="text-muted-foreground hover:text-foreground"><i data-lucide="copy" class="w-3 h-3"></i></button>
+                                </div>
+                                <div class="bg-muted/50 border rounded-md p-2 text-[10px] font-mono text-foreground break-all" id="rawClaudeUrl"></div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Gemini Card -->
-                    <div class="border rounded-xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+                    <div class="border rounded-xl p-5 bg-card text-card-foreground shadow-sm hover:shadow-md transition-all relative overflow-hidden group flex flex-col">
                         <div class="absolute top-0 right-0 p-4 opacity-10">
                             <i data-lucide="gem" class="w-16 h-16 text-blue-500"></i>
                         </div>
                         <h4 class="font-semibold text-blue-600 mb-4 flex items-center gap-2">
                             Google Gemini
                         </h4>
-                        <div class="space-y-4 relative z-10">
+                        <div class="space-y-4 relative z-10 flex-1">
                             <div>
                                 <div class="flex justify-between items-center mb-1.5">
-                                    <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Base URL</span>
+                                    <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">SDK Base URL</span>
                                     <button onclick="copyToClipboard(document.getElementById('baseGeminiUrl').textContent, this)" class="text-muted-foreground hover:text-foreground"><i data-lucide="copy" class="w-3 h-3"></i></button>
                                 </div>
                                 <div class="bg-muted/50 border rounded-md p-2 text-[10px] font-mono text-foreground break-all" id="baseGeminiUrl"></div>
+                                <p class="text-[10px] text-muted-foreground mt-1">SDK builds path <code class="bg-muted px-1 rounded">/v1beta/models/...</code></p>
+                            </div>
+                            <div class="pt-2 border-t border-dashed">
+                                <div class="flex justify-between items-center mb-1.5">
+                                    <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Raw HTTP Endpoint</span>
+                                    <button onclick="copyToClipboard(document.getElementById('rawGeminiUrl').textContent, this)" class="text-muted-foreground hover:text-foreground"><i data-lucide="copy" class="w-3 h-3"></i></button>
+                                </div>
+                                <div class="bg-muted/50 border rounded-md p-2 text-[10px] font-mono text-foreground break-all" id="rawGeminiUrl"></div>
+                                <p class="text-[10px] text-muted-foreground mt-1">Replace <code class="bg-muted px-1 rounded">{model}</code> with Group ID</p>
                             </div>
                         </div>
                     </div>
@@ -998,7 +1023,20 @@
         async function deleteAdminKey(id) { if (confirm('Delete admin key?')) try { await fetchAPI(`/admin/admin-keys/${id}`, { method: 'DELETE' }); showToast('Deleted', 'success'); loadAdminKeys(); } catch (err) { showToast(err.message, 'error'); } }
 
         // --- Helpers ---
-        function showIntegrationModal() { const o = window.location.origin; document.getElementById('baseOpenAIUrl').textContent = o + '/v1'; document.getElementById('baseClaudeUrl').textContent = o + '/v1'; document.getElementById('baseGeminiUrl').textContent = o; showModal('integrationModal'); }
+        function showIntegrationModal() { 
+            const o = window.location.origin; 
+            // SDK Base URLs
+            document.getElementById('baseOpenAIUrl').textContent = o + '/v1'; 
+            document.getElementById('baseClaudeUrl').textContent = o + '/v1'; 
+            document.getElementById('baseGeminiUrl').textContent = o; 
+            
+            // Raw HTTP Endpoints
+            document.getElementById('rawOpenAIUrl').textContent = o + '/v1/chat/completions';
+            document.getElementById('rawClaudeUrl').textContent = o + '/v1/messages';
+            document.getElementById('rawGeminiUrl').textContent = o + '/v1beta/models/{model}:generateContent';
+            
+            showModal('integrationModal'); 
+        }
         function showAddGroupModal() { showModal('addGroupModal'); }
         function showAddModelModal(gid) { document.getElementById('addModelGroupId').value = gid; showModal('addModelModal'); }
         function showAddKeyModal(mid) { document.getElementById('addKeyModelId').value = mid; showModal('addKeyModal'); }
