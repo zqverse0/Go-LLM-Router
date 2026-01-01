@@ -105,6 +105,7 @@ func main() {
 	{
 		// 路由处理逻辑下沉到 ProxyHandler
 		api.POST("/v1/chat/completions", verifyAdminToken(lb), proxyHandler.HandleProxyRequest())
+		api.POST("/v1/images/generations", verifyAdminToken(lb), proxyHandler.HandleProxyRequest()) // Support Image Gen
 		
 		// Inbound Adapters (Reverse Conversion)
 		api.POST("/v1/messages", verifyAdminToken(lb), proxyHandler.HandleClaudeMessage)

@@ -61,7 +61,7 @@ type ModelGroup struct {
 type ModelStats struct {
 	gorm.Model
 	ModelGroupID  uint  `json:"model_group_id"`
-	ModelConfigID uint  `json:"model_config_id"` // 新增：关联到具体的模型配置
+	ModelConfigID uint  `gorm:"uniqueIndex" json:"model_config_id"` // 关联到具体的模型配置，必须唯一
 	ModelIndex    int   `json:"model_index"`      // 模型在组中的索引
 	Success       int   `gorm:"default:0" json:"success"`
 	Error         int   `gorm:"default:0" json:"error"`

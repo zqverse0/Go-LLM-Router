@@ -37,12 +37,19 @@ func (a *OpenAIAdapter) ConvertRequest(ctx *gin.Context, originalReq models.Chat
 	}
 
 	// [Auto-Append Endpoint]
-	// Standardize behavior: User provides base (e.g. "https://api.openai.com/v1")
-	// Adapter checks and appends "/chat/completions" if missing
-	if !strings.HasSuffix(u.Path, "/chat/completions") {
-		// Avoid double slash
-		basePath := strings.TrimSuffix(u.Path, "/")
-		u.Path = basePath + "/chat/completions"
+	// Only append /chat/completions if it looks like a base URL.
+	// We avoid appending if the user has already specified a specific endpoint (like /v1/images/generations).
+	path := u.Path
+	if !strings.Contains(path, "/chat/completions") && 
+	   !strings.Contains(path, "/images/") && 
+	   !strings.Contains(path, "/audio/") && 
+	   !strings.Contains(path, "/embeddings") {
+		
+		// If path is empty, root, or ends in /v1, append chat completions
+		if path == "" || path == "/" || strings.HasSuffix(path, "/v1") || strings.HasSuffix(path, "/v1/") {
+			basePath := strings.TrimSuffix(path, "/")
+			u.Path = basePath + "/chat/completions"
+		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx.Request.Context(), "POST", u.String(), bytes.NewBuffer(reqBodyBytes))
