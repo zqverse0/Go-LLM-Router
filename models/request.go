@@ -9,7 +9,7 @@ import (
 // ChatCompletionRequest OpenAI 聊天请求
 type ChatCompletionRequest struct {
 	Model            string                 `json:"model" binding:"required"`
-	Messages         []ChatMessage          `json:"messages" binding:"required"`
+	Messages         []ChatMessage          `json:"messages,omitempty"` // Add omitempty to hide from Image requests
 	Stream           bool                   `json:"stream,omitempty"`
 	Temperature      *float64               `json:"temperature,omitempty"`
 	TopP             *float64               `json:"top_p,omitempty"`
@@ -26,6 +26,12 @@ type ChatCompletionRequest struct {
 	ToolChoice       interface{}            `json:"tool_choice,omitempty"`
 	ParallelToolCalls *bool                 `json:"parallel_tool_calls,omitempty"`
 	ResponseFormat   *ResponseFormat        `json:"response_format,omitempty"`
+	
+	// Image Generation Fields
+	Prompt           interface{}            `json:"prompt,omitempty"` 
+	Size             string                 `json:"size,omitempty"`
+	Quality          string                 `json:"quality,omitempty"`
+	Style            string                 `json:"style,omitempty"`
 }
 
 // ChatMessage 聊天消息

@@ -28,12 +28,12 @@ func main() {
 	log.SetLevel(logrus.InfoLevel)
 	log.SetFormatter(&logrus.JSONFormatter{})
 
-	// 配置日志输出：同时输出到文件和控制台
-	file, err := os.OpenFile("gateway.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	// 配置日志输出：使用带轮转的文件写入器 (10MB 限制)
+	rotator, err := core.NewLogRotator("gateway.log", 10)
 	if err == nil {
-		log.SetOutput(io.MultiWriter(os.Stdout, file))
+		log.SetOutput(io.MultiWriter(os.Stdout, rotator))
 	} else {
-		log.Warn("Failed to log to file, using default stderr")
+		log.Warn("Failed to init log rotator, using default stderr")
 	}
 
 	// 🔇 关闭 Gin Debug 模式输出

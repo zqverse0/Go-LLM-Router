@@ -1,146 +1,59 @@
-{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T17:04:52+08:00"}
-{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T17:04:52+08:00"}
-{"level":"info","msg":"Loaded 3 model groups (LoadBalancer mode)","time":"2026-01-01T17:04:52+08:00"}
-{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T17:04:52+08:00"}
-
-2026/01/01 17:07:37 [31;1m/home/zcs/Public/Go-LLM-Router/cmd/middleware.go:56 [35;1mrecord not found
-[0m[33m[0.095ms] [34;1m[rows:0][0m SELECT * FROM `admin_keys` WHERE key = "sk-admin-4a67b33ad41e07f5db3d1d91c85ba5de" ORDER BY `admin_keys`.`id` LIMIT 1
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://api.deepseek.com/chat/completions (deepseek-chat) | Key: ...c8a2","time":"2026-01-01T17:08:07+08:00"}
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://api.deepseek.com/chat/completions (deepseek-chat) | Key: ...c8a2","time":"2026-01-01T17:08:09+08:00"}
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://api.deepseek.com/chat/completions (deepseek-chat) | Key: ...c8a2","time":"2026-01-01T17:08:09+08:00"}
-
-2026/01/01 17:08:12 [31;1m/home/zcs/Public/Go-LLM-Router/core/logger.go:134 [35;1mON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
-[0m[33m[0.042ms] [34;1m[rows:0][0m 
-			INSERT INTO model_stats (created_at, updated_at, model_config_id, model_group_id, success, error, total_latency, request_count, total_requests)
-			VALUES (CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, 3, 3, 0, 4276, 3, 3)
-			ON CONFLICT(model_config_id) DO UPDATE SET
-				updated_at = CURRENT_TIMESTAMP,
-				success = success + excluded.success,
-				error = error + excluded.error,
-				total_latency = total_latency + excluded.total_latency,
-				request_count = request_count + excluded.request_count,
-				total_requests = total_requests + excluded.total_requests
-		
-{"level":"info","msg":"Loaded 2 model groups (LoadBalancer mode)","time":"2026-01-01T17:09:18+08:00"}
-{"level":"info","msg":"[INFO] DeleteGroup | ID: fasd | Success","time":"2026-01-01T17:09:18+08:00"}
-
-2026/01/01 17:09:55 [31;1m/home/zcs/Public/Go-LLM-Router/cmd/handlers.go:166 [35;1mrecord not found
-[0m[33m[0.148ms] [34;1m[rows:0][0m SELECT * FROM `model_groups` WHERE group_id = "Ai-code" ORDER BY `model_groups`.`id` LIMIT 1
-{"level":"info","msg":"Loaded 3 model groups (LoadBalancer mode)","time":"2026-01-01T17:09:55+08:00"}
-{"level":"info","msg":"[INFO] CreateGroup | ID: Ai-code | Strategy: fallback | Success","time":"2026-01-01T17:09:55+08:00"}
-{"level":"info","msg":"Loaded 3 model groups (LoadBalancer mode)","time":"2026-01-01T17:12:12+08:00"}
-{"level":"info","msg":"[INFO] CreateModel | Group: Ai-code | Model: Qwen/Qwen3-Coder-480B-A35B-Instruct | Keys: 1 | Success","time":"2026-01-01T17:12:12+08:00"}
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...fa2c","time":"2026-01-01T17:12:21+08:00"}
-
-2026/01/01 17:12:22 [31;1m/home/zcs/Public/Go-LLM-Router/core/logger.go:134 [35;1mON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
-[0m[33m[0.034ms] [34;1m[rows:0][0m 
-			INSERT INTO model_stats (created_at, updated_at, model_config_id, model_group_id, success, error, total_latency, request_count, total_requests)
-			VALUES (CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 2, 4, 1, 0, 640, 1, 1)
-			ON CONFLICT(model_config_id) DO UPDATE SET
-				updated_at = CURRENT_TIMESTAMP,
-				success = success + excluded.success,
-				error = error + excluded.error,
-				total_latency = total_latency + excluded.total_latency,
-				request_count = request_count + excluded.request_count,
-				total_requests = total_requests + excluded.total_requests
-		
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...fa2c","time":"2026-01-01T17:12:22+08:00"}
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...fa2c","time":"2026-01-01T17:12:23+08:00"}
-{"level":"warning","msg":"Upstream 429 (Rate Limit). Marking key cooldown.","time":"2026-01-01T17:12:23+08:00"}
-{"level":"warning","msg":"[Attempt 2] Routing failed: all keys for model Qwen/Qwen3-Coder-480B-A35B-Instruct are in cooldown or dead","time":"2026-01-01T17:12:23+08:00"}
-{"level":"error","msg":"All 3 retries failed. Last error: all keys for model Qwen/Qwen3-Coder-480B-A35B-Instruct are in cooldown or dead","time":"2026-01-01T17:12:23+08:00"}
-
-2026/01/01 17:12:27 [31;1m/home/zcs/Public/Go-LLM-Router/core/logger.go:134 [35;1mON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
-[0m[33m[0.036ms] [34;1m[rows:0][0m 
-			INSERT INTO model_stats (created_at, updated_at, model_config_id, model_group_id, success, error, total_latency, request_count, total_requests)
-			VALUES (CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 2, 4, 1, 0, 767, 1, 1)
-			ON CONFLICT(model_config_id) DO UPDATE SET
-				updated_at = CURRENT_TIMESTAMP,
-				success = success + excluded.success,
-				error = error + excluded.error,
-				total_latency = total_latency + excluded.total_latency,
-				request_count = request_count + excluded.request_count,
-				total_requests = total_requests + excluded.total_requests
-		
-
-2026/01/01 17:13:22 [31;1m/home/zcs/Public/Go-LLM-Router/cmd/handlers.go:166 [35;1mrecord not found
-[0m[33m[0.029ms] [34;1m[rows:0][0m SELECT * FROM `model_groups` WHERE group_id = "image" ORDER BY `model_groups`.`id` LIMIT 1
-{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T17:13:22+08:00"}
-{"level":"info","msg":"[INFO] CreateGroup | ID: image | Strategy: fallback | Success","time":"2026-01-01T17:13:22+08:00"}
-{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T17:14:31+08:00"}
-{"level":"info","msg":"[INFO] CreateModel | Group: image | Model: Tongyi-MAI/Z-Image-Turbo | Keys: 1 | Success","time":"2026-01-01T17:14:31+08:00"}
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/ (Tongyi-MAI/Z-Image-Turbo) | Key: ...fa2c","time":"2026-01-01T17:14:39+08:00"}
-
-2026/01/01 17:14:42 [31;1m/home/zcs/Public/Go-LLM-Router/core/logger.go:134 [35;1mON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
-[0m[33m[0.072ms] [34;1m[rows:0][0m 
-			INSERT INTO model_stats (created_at, updated_at, model_config_id, model_group_id, success, error, total_latency, request_count, total_requests)
-			VALUES (CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 3, 5, 1, 0, 150, 1, 1)
-			ON CONFLICT(model_config_id) DO UPDATE SET
-				updated_at = CURRENT_TIMESTAMP,
-				success = success + excluded.success,
-				error = error + excluded.error,
-				total_latency = total_latency + excluded.total_latency,
-				request_count = request_count + excluded.request_count,
-				total_requests = total_requests + excluded.total_requests
-		
-{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T17:15:49+08:00"}
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1/images/generations (Tongyi-MAI/Z-Image-Turbo) | Key: ...fa2c","time":"2026-01-01T17:15:57+08:00"}
-
-2026/01/01 17:15:57 [31;1m/home/zcs/Public/Go-LLM-Router/core/logger.go:134 [35;1mON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
-[0m[33m[0.041ms] [34;1m[rows:0][0m 
-			INSERT INTO model_stats (created_at, updated_at, model_config_id, model_group_id, success, error, total_latency, request_count, total_requests)
-			VALUES (CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 3, 5, 1, 0, 45, 1, 1)
-			ON CONFLICT(model_config_id) DO UPDATE SET
-				updated_at = CURRENT_TIMESTAMP,
-				success = success + excluded.success,
-				error = error + excluded.error,
-				total_latency = total_latency + excluded.total_latency,
-				request_count = request_count + excluded.request_count,
-				total_requests = total_requests + excluded.total_requests
-		
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...fa2c","time":"2026-01-01T17:18:15+08:00"}
-
-2026/01/01 17:18:17 [31;1m/home/zcs/Public/Go-LLM-Router/core/logger.go:134 [35;1mON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
-[0m[33m[0.037ms] [34;1m[rows:0][0m 
-			INSERT INTO model_stats (created_at, updated_at, model_config_id, model_group_id, success, error, total_latency, request_count, total_requests)
-			VALUES (CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 2, 4, 1, 0, 543, 1, 1)
-			ON CONFLICT(model_config_id) DO UPDATE SET
-				updated_at = CURRENT_TIMESTAMP,
-				success = success + excluded.success,
-				error = error + excluded.error,
-				total_latency = total_latency + excluded.total_latency,
-				request_count = request_count + excluded.request_count,
-				total_requests = total_requests + excluded.total_requests
-		
-{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T17:28:06+08:00"}
-{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T17:28:06+08:00"}
-{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T17:28:06+08:00"}
-{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T17:28:06+08:00"}
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1/images/generations (Tongyi-MAI/Z-Image-Turbo) | Key: ...fa2c","time":"2026-01-01T17:28:41+08:00"}
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...fa2c","time":"2026-01-01T17:31:02+08:00"}
-{"level":"info","msg":"Loaded 3 model groups (LoadBalancer mode)","time":"2026-01-01T17:31:31+08:00"}
-{"level":"info","msg":"[INFO] DeleteGroup | ID: image | Success","time":"2026-01-01T17:31:31+08:00"}
-{"level":"info","msg":"[INFO] CreateAPIKey | Model: 2 | Success","time":"2026-01-01T17:32:50+08:00"}
-{"level":"info","msg":"Loaded 3 model groups (LoadBalancer mode)","time":"2026-01-01T17:32:50+08:00"}
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...fa2c","time":"2026-01-01T17:33:35+08:00"}
-{"level":"error","msg":"Upstream Auth Error (401). Marking key dead.","time":"2026-01-01T17:33:35+08:00"}
-{"level":"info","msg":"[Attempt 2] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T17:33:35+08:00"}
-{"level":"info","msg":"Loaded 3 model groups (LoadBalancer mode)","time":"2026-01-01T17:35:23+08:00"}
-{"level":"info","msg":"[INFO] CreateModel | Group: gemin | Model: gemini-pro | Keys: 2 | Success","time":"2026-01-01T17:35:23+08:00"}
-{"level":"warning","msg":"[Attempt 1] Routing failed: group not found or has no models","time":"2026-01-01T17:35:50+08:00"}
-{"level":"error","msg":"All 3 retries failed. Last error: group not found or has no models","time":"2026-01-01T17:35:50+08:00"}
-{"level":"info","msg":"Loaded 3 model groups (LoadBalancer mode)","time":"2026-01-01T17:36:59+08:00"}
-{"level":"warning","msg":"[Attempt 1] Routing failed: group not found or has no models","time":"2026-01-01T17:37:06+08:00"}
-{"level":"error","msg":"All 3 retries failed. Last error: group not found or has no models","time":"2026-01-01T17:37:06+08:00"}
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://generativelanguage.googleapis.com/v1beta (gemini-3-pro-preview) | Key: ...nAHQ","time":"2026-01-01T17:37:32+08:00"}
-{"level":"warning","msg":"Upstream 429 (Rate Limit). Marking key cooldown.","time":"2026-01-01T17:37:33+08:00"}
-{"level":"info","msg":"[Attempt 2] Selected upstream: https://generativelanguage.googleapis.com/v1beta (gemini-3-pro-preview) | Key: ...ayg0","time":"2026-01-01T17:37:33+08:00"}
-{"level":"warning","msg":"Upstream 429 (Rate Limit). Marking key cooldown.","time":"2026-01-01T17:37:34+08:00"}
-{"level":"warning","msg":"[Attempt 3] Routing failed: all keys for model gemini-3-pro-preview are in cooldown or dead","time":"2026-01-01T17:37:34+08:00"}
-{"level":"error","msg":"All 3 retries failed. Last error: all keys for model gemini-3-pro-preview are in cooldown or dead","time":"2026-01-01T17:37:34+08:00"}
-{"level":"info","msg":"Loaded 3 model groups (LoadBalancer mode)","time":"2026-01-01T17:39:49+08:00"}
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://generativelanguage.googleapis.com/v1beta (gemini-2.5-flash) | Key: ...nAHQ","time":"2026-01-01T17:39:56+08:00"}
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://generativelanguage.googleapis.com/v1beta (gemini-2.5-flash) | Key: ...ayg0","time":"2026-01-01T17:39:58+08:00"}
-{"level":"info","msg":"[Attempt 1] Selected upstream: https://generativelanguage.googleapis.com/v1beta (gemini-2.5-flash) | Key: ...nAHQ","time":"2026-01-01T17:40:00+08:00"}
-{"level":"info","msg":"Shutting down server...","time":"2026-01-01T17:41:35+08:00"}
-{"level":"info","msg":"Server exited","time":"2026-01-01T17:41:35+08:00"}
+nohup: failed to run command './gateway': No such file or directory
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T17:59:19+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T17:59:19+08:00"}
+{"level":"info","msg":"Loaded 3 model groups (LoadBalancer mode)","time":"2026-01-01T17:59:19+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T17:59:19+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T17:59:36+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T18:00:35+08:00"}
+{"level":"info","msg":"[INFO] CreateModel | Group: image | Model: Tongyi-MAI/Z-Image-Turbo | Keys: 1 | Success","time":"2026-01-01T18:00:35+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1/images/generations (Tongyi-MAI/Z-Image-Turbo) | Key: ...351d","time":"2026-01-01T18:00:40+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...fa2c","time":"2026-01-01T18:00:54+08:00"}
+{"level":"error","msg":"Upstream Auth Error (401). Marking key dead.","time":"2026-01-01T18:00:54+08:00"}
+{"level":"info","msg":"[Attempt 2] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T18:00:54+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T18:00:55+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T18:00:56+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T18:04:43+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T18:04:43+08:00"}
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T18:04:45+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T18:04:45+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T18:04:45+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T18:04:45+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1/images/generations (Tongyi-MAI/Z-Image-Turbo) | Key: ...351d","time":"2026-01-01T18:04:56+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1/images/generations (Tongyi-MAI/Z-Image-Turbo) | Key: ...351d","time":"2026-01-01T18:05:07+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1/images/generations (Tongyi-MAI/Z-Image-Turbo) | Key: ...351d","time":"2026-01-01T18:05:20+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...fa2c","time":"2026-01-01T18:05:54+08:00"}
+{"level":"error","msg":"Upstream Auth Error (401). Marking key dead.","time":"2026-01-01T18:05:54+08:00"}
+{"level":"info","msg":"[Attempt 2] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T18:05:54+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T18:06:07+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T18:06:07+08:00"}
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T18:06:41+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T18:06:41+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T18:06:41+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T18:06:41+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1/images/generations (Tongyi-MAI/Z-Image-Turbo) | Key: ...351d","time":"2026-01-01T18:06:52+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T18:09:30+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T18:09:30+08:00"}
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T18:09:35+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T18:09:35+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T18:09:35+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T18:09:35+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1/images/generations (Tongyi-MAI/Z-Image-Turbo) | Key: ...351d","time":"2026-01-01T18:09:45+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T18:11:44+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T18:11:44+08:00"}
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T18:12:58+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T18:12:58+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T18:12:58+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T18:12:58+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1/images/generations (Tongyi-MAI/Z-Image-Turbo) | Key: ...351d","time":"2026-01-01T18:13:04+08:00"}
+{"level":"warning","msg":"[Attempt 1] Routing failed: group not found or has no models","time":"2026-01-01T18:17:19+08:00"}
+{"level":"error","msg":"All 3 retries failed. Last error: group not found or has no models","time":"2026-01-01T18:17:19+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1/images/generations (Tongyi-MAI/Z-Image-Turbo) | Key: ...351d","time":"2026-01-01T18:17:45+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T18:20:43+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T18:20:43+08:00"}
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T18:20:45+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T18:20:45+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T18:20:45+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T18:20:45+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1/images/generations (Tongyi-MAI/Z-Image-Turbo) | Key: ...351d","time":"2026-01-01T18:21:25+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T18:24:28+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T18:24:28+08:00"}

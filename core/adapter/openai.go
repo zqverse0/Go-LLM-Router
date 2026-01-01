@@ -24,17 +24,33 @@ func (a *OpenAIAdapter) ConvertRequest(ctx *gin.Context, originalReq models.Chat
 	// 关键修复：将请求中的模型名替换为上游识别的名称
 	originalReq.Model = upstreamModel
 	
+	// [Sanitization]
+	// If this looks like an image request (has Prompt), ensure Messages is nil
+	// so omitempty kicks in. Empty slice [] != nil.
+	if originalReq.Prompt != nil {
+		originalReq.Messages = nil
+	} else if len(originalReq.Messages) == 0 {
+		// If both are empty, it's a weird request, but let's default to nil Messages to be safe
+		originalReq.Messages = nil
+	}
+
 	// 直接序列化原始请求
 	reqBodyBytes, err := json.Marshal(originalReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-
+	
 	// 验证 URL
 	u, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid upstream url: %w", err)
 	}
+
+	// [Debug] Log the actual payload being sent
+	// WARNING: This logs sensitive data (prompt/messages). Disable in production.
+	// fmt.Printf("\n[OpenAIAdapter] Upstream: %s\n", u.String())
+	// fmt.Printf("[OpenAIAdapter] Prompt Type: %T\n", originalReq.Prompt)
+	// fmt.Printf("[OpenAIAdapter] Payload: %s\n\n", string(reqBodyBytes))
 
 	// [Auto-Append Endpoint]
 	// Only append /chat/completions if it looks like a base URL.
