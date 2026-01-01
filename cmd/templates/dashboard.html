@@ -426,7 +426,8 @@
                     <label class="text-sm font-medium leading-none" data-i18n="upstream_url">Upstream URL</label>
                     <input type="url" name="upstream_url" required
                            class="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                           placeholder="e.g., https://api.openai.com/v1">
+                           placeholder="Base URL, e.g., https://api.deepseek.com">
+                    <p class="text-[10px] text-muted-foreground italic">Note: Only enter the Base URL. The gateway will automatically handle endpoint paths.</p>
                 </div>
                 <div class="space-y-2">
                     <label class="text-sm font-medium leading-none" data-i18n="model_name">Model Name</label>
@@ -743,6 +744,13 @@
     </div>
 
     <script>
+        // --- Constants ---
+        const PROVIDER_DEFAULTS = {
+            openai: { url: 'https://api.openai.com/v1', model: 'gpt-3.5-turbo' },
+            gemini: { url: 'https://generativelanguage.googleapis.com/v1beta', model: 'gemini-pro' },
+            claude: { url: 'https://api.anthropic.com/v1', model: 'claude-3-opus-20240229' }
+        };
+
         // --- Translations ---
         const translations = {
             en: {
@@ -815,7 +823,32 @@
             document.getElementById('addKeyForm').addEventListener('submit', handleAddKey);
             document.getElementById('editModelForm').addEventListener('submit', handleEditModel);
             document.getElementById('addAdminKeyForm').addEventListener('submit', createAdminKey);
+            
+            // Auto-fill listeners
+            document.querySelector('#addModelForm select[name="provider_name"]').addEventListener('change', (e) => autoFillDefaults(e.target.value, 'add'));
+            document.querySelector('#editModelForm select[name="provider_name"]').addEventListener('change', (e) => autoFillDefaults(e.target.value, 'edit'));
         });
+
+        function autoFillDefaults(provider, mode) {
+            const defs = PROVIDER_DEFAULTS[provider];
+            if (!defs) return;
+            
+            const urlInput = document.querySelector(`#${mode}ModelForm input[name="upstream_url"]`);
+            const modelInput = document.querySelector(`#${mode}ModelForm input[name="upstream_model"]`);
+            
+            // Only autofill if empty or matches another default
+            const currentUrl = urlInput.value;
+            const isDefaultOrEmpty = !currentUrl || Object.values(PROVIDER_DEFAULTS).some(d => d.url === currentUrl);
+            
+            if (isDefaultOrEmpty) {
+                urlInput.value = defs.url;
+            }
+            if (!modelInput.value) {
+                modelInput.placeholder = defs.model;
+                // Optional: actually fill it if empty
+                if (!modelInput.value) modelInput.value = defs.model;
+            }
+        }
 
         // --- I18n ---
         function toggleLanguage() { currentLang = currentLang === 'en' ? 'zh' : 'en'; localStorage.setItem('lang', currentLang); updateLanguage(currentLang); }
@@ -876,7 +909,7 @@
             if (m.provider_name === 'openai') { icon = 'bot'; color = 'text-green-600'; }
             else if (m.provider_name === 'claude') { icon = 'sparkles'; color = 'text-purple-600'; }
             else if (m.provider_name === 'gemini') { icon = 'gem'; color = 'text-blue-600'; }
-            return `<div class="p-4 hover:bg-muted/5 transition group"><div class="flex items-start gap-4 w-full"><div class="flex-shrink-0 mt-1"><span class="flex items-center justify-center w-6 h-6 rounded bg-muted text-xs font-mono text-muted-foreground font-medium">${i+1}</span></div><div class="flex-1 min-w-0"><div class="flex items-center gap-2 mb-1"><i data-lucide="${icon}" class="w-4 h-4 ${color}"></i><span class="font-semibold text-sm capitalize">${m.provider_name}</span><i data-lucide="arrow-right" class="w-3 h-3 text-muted-foreground/50"></i><span class="font-medium text-sm text-foreground">${m.upstream_model}</span><div class="ml-auto flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity"><button data-action="editModel" data-id="${m.ID}" data-provider="${m.provider_name}" data-url="${m.upstream_url}" data-model="${m.upstream_model}" data-timeout="${m.timeout}" class="inline-flex items-center justify-center rounded-md h-8 w-8 text-muted-foreground hover:bg-accent hover:text-foreground"><i data-lucide="settings-2" class="w-4 h-4"></i></button><button data-action="deleteModel" data-id="${m.ID}" class="inline-flex items-center justify-center rounded-md h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div><div class="text-xs text-muted-foreground font-mono break-all bg-muted/30 px-2 py-0.5 rounded inline-block">${m.upstream_url}</div><div class="mt-3 flex flex-wrap gap-2 items-center">${keys}<button data-action="showAddKeyModal" data-id="${m.ID}" class="inline-flex items-center justify-center rounded-full border border-dashed px-2.5 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent h-6"><i data-lucide="plus" class="w-3 h-3 mr-1"></i> Key</button></div></div></div></div>`;
+            return `<div class="p-4 hover:bg-muted/5 transition group"><div class="flex items-start gap-4 w-full"><div class="flex-shrink-0 mt-1"><span class="flex items-center justify-center w-6 h-6 rounded bg-muted text-xs font-mono text-muted-foreground font-medium">${i+1}</span></div><div class="flex-1 min-w-0"><div class="flex items-center gap-3 mb-1"><div class="px-2 py-0.5 rounded bg-muted text-[10px] font-bold uppercase tracking-wider text-muted-foreground border flex items-center gap-1.5"><i data-lucide="${icon}" class="w-3 h-3 ${color}"></i>${m.provider_name}</div><span class="font-bold text-sm text-foreground">${m.upstream_model}</span><div class="ml-auto flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity"><button data-action="editModel" data-id="${m.ID}" data-provider="${m.provider_name}" data-url="${m.upstream_url}" data-model="${m.upstream_model}" data-timeout="${m.timeout}" class="inline-flex items-center justify-center rounded-md h-8 w-8 text-muted-foreground hover:bg-accent hover:text-foreground"><i data-lucide="settings-2" class="w-4 h-4"></i></button><button data-action="deleteModel" data-id="${m.ID}" class="inline-flex items-center justify-center rounded-md h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div><div class="text-xs text-muted-foreground font-mono truncate max-w-md opacity-70" title="${m.upstream_url}">${m.upstream_url}</div><div class="mt-3 flex flex-wrap gap-2 items-center">${keys}<button data-action="showAddKeyModal" data-id="${m.ID}" class="inline-flex items-center justify-center rounded-full border border-dashed px-2.5 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent h-6"><i data-lucide="plus" class="w-3 h-3 mr-1"></i> Key</button></div></div></div></div>`;
         }
 
         function createKeyElement(k) {
@@ -889,7 +922,10 @@
             let groups = dashboardData.length, models = 0, keys = 0, reqs = 0;
             dashboardData.forEach(g => {
                 models += g.model_count;
-                g.details?.models?.forEach(m => { keys += m.api_keys?.length || 0; reqs += m.total_requests || 0; });
+                g.details?.models?.forEach(m => { 
+                    keys += m.api_keys?.length || 0; 
+                    reqs += m.stats?.total_requests || 0; 
+                });
             });
             document.getElementById('totalGroups').textContent = groups;
             document.getElementById('totalModels').textContent = models;
@@ -947,11 +983,11 @@
         function prevLogs() { if (logsOffset > 0) loadLogs(logsOffset - LOGS_LIMIT); }
         function nextLogs() { loadLogs(logsOffset + LOGS_LIMIT); }
         function createLogRow(l) {
-            const date = new Date(l.created_at * 1000);
+            const date = new Date(l.created_at);
             let sc = 'text-green-600 bg-green-500/10 border-green-500/20';
             if (l.status_code >= 400) sc = 'text-yellow-600 bg-yellow-500/10 border-yellow-500/20';
             if (l.status_code >= 500) sc = 'text-red-600 bg-red-500/10 border-red-500/20';
-            return `<tr class="hover:bg-muted/30 transition-colors"><td class="px-4 py-3 text-xs font-mono text-muted-foreground whitespace-nowrap">${date.toLocaleTimeString()}</td><td class="px-4 py-3"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${sc}">${l.status_code}</span></td><td class="px-4 py-3 text-xs font-mono">${l.duration_ms}ms</td><td class="px-4 py-3 text-xs font-medium">${l.upstream_model || '-'}</td><td class="px-4 py-3 text-xs font-mono text-muted-foreground">${l.client_ip || '-'}</td><td class="px-4 py-3 text-xs font-mono text-muted-foreground truncate max-w-[100px]" title="${l.request_id}">${l.request_id}</td></tr>`;
+            return `<tr class="hover:bg-muted/30 transition-colors"><td class="px-4 py-3 text-xs font-mono text-muted-foreground whitespace-nowrap">${date.toLocaleTimeString()}</td><td class="px-4 py-3"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${sc}">${l.status_code}</span></td><td class="px-4 py-3 text-xs font-mono">${l.duration}ms</td><td class="px-4 py-3 text-xs font-medium">${l.used_model || '-'}</td><td class="px-4 py-3 text-xs font-mono text-muted-foreground">${l.ip || '-'}</td><td class="px-4 py-3 text-xs font-mono text-muted-foreground truncate max-w-[100px]" title="${l.request_id}">${l.request_id}</td></tr>`;
         }
 
         // --- Interaction ---

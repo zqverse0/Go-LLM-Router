@@ -183,9 +183,11 @@ func (lb *LoadBalancer) Route(groupID string) (*models.RoutingInfo, error) {
 
 	return &models.RoutingInfo{
 		GroupID:       groupID,
+		ModelGroupID:  state.Config.ID,
 		Provider:      selectedModel.ProviderName,
 		UpstreamURL:   selectedModel.UpstreamURL,
 		UpstreamModel: selectedModel.UpstreamModel,
+		ModelConfigID: selectedModel.ID,
 		APIKey:        finalKey,
 		Timeout:       selectedModel.Timeout,
 	}, nil

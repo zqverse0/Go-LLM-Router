@@ -19,6 +19,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"io"
 )
 
 func main() {
@@ -26,6 +27,15 @@ func main() {
 	log := logrus.New()
 	log.SetLevel(logrus.InfoLevel)
 	log.SetFormatter(&logrus.JSONFormatter{})
+
+	// 配置日志输出：同时输出到文件和控制台
+	file, err := os.OpenFile("gateway.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err == nil {
+		log.SetOutput(io.MultiWriter(os.Stdout, file))
+	} else {
+		log.Warn("Failed to log to file, using default stderr")
+	}
+
 	// 🔇 关闭 Gin Debug 模式输出
 	gin.SetMode(gin.ReleaseMode)
 

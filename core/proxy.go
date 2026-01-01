@@ -187,10 +187,15 @@ func recordLog(logger *AsyncRequestLogger, reqID string, c *gin.Context, ip stri
 	group := ""
 	model := ""
 	provider := ""
+	var modelConfigID uint
+	var modelGroupID uint
+
 	if routing != nil {
 		group = routing.GroupID
 		model = routing.UpstreamModel
 		provider = routing.Provider
+		modelConfigID = routing.ModelConfigID
+		modelGroupID = routing.ModelGroupID
 	}
 	
 	logger.Log(&models.RequestLog{
@@ -204,6 +209,8 @@ func recordLog(logger *AsyncRequestLogger, reqID string, c *gin.Context, ip stri
 		ModelGroup:       group,
 		UsedModel:        model,
 		Provider:         provider,
+		ModelConfigID:    modelConfigID,
+		ModelGroupID:     modelGroupID,
 		UserAgent:        c.Request.UserAgent(),
 	})
 }

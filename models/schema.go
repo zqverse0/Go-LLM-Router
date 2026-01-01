@@ -88,6 +88,8 @@ type RequestLog struct {
 	ModelGroup       string    `json:"model_group"`
 	UsedModel        string    `json:"used_model"`
 	Provider         string    `json:"provider"`
+	ModelConfigID    uint      `json:"model_config_id"` // 关联ID用于统计
+	ModelGroupID     uint      `json:"model_group_id"`  // 关联ID用于统计
 	PromptTokens     int       `json:"prompt_tokens"`
 	CompletionTokens int       `json:"completion_tokens"`
 	ErrorMsg         string    `json:"error_msg,omitempty"`
@@ -96,9 +98,11 @@ type RequestLog struct {
 // RoutingInfo 路由信息（不存储到数据库）
 type RoutingInfo struct {
 	GroupID       string `json:"group_id"`
+	ModelGroupID  uint   `json:"model_group_db_id"` // DB ID
 	Provider      string `json:"provider"`
 	UpstreamURL   string `json:"upstream_url"`
 	UpstreamModel string `json:"upstream_model"`
+	ModelConfigID uint   `json:"model_config_db_id"` // DB ID
 	APIKey        string `json:"api_key"`
 	Timeout       int    `json:"timeout"`
 }

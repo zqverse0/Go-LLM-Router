@@ -129,7 +129,7 @@ func handleListModelGroups(lb *core.LoadBalancer) gin.HandlerFunc {
 			}
 
 			var modelConfigs []models.ModelConfig
-			if err := lb.GetDB().Where("model_group_id = ?", group.ID).Find(&modelConfigs).Error; err != nil {
+			if err := lb.GetDB().Preload("Stats").Where("model_group_id = ?", group.ID).Find(&modelConfigs).Error; err != nil {
 				lb.GetLogger().Errorf("Failed to load models for group %d: %v", group.ID, err)
 				modelConfigs = []models.ModelConfig{}
 			}

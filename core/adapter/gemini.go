@@ -219,8 +219,28 @@ func (a *GeminiAdapter) ConvertRequest(ctx *gin.Context, originalReq models.Chat
 		return nil, fmt.Errorf("invalid upstream url: %w", err)
 	}
 
-	if originalReq.Stream && strings.HasSuffix(u.Path, ":generateContent") {
-		u.Path = strings.Replace(u.Path, ":generateContent", ":streamGenerateContent", 1)
+	// [Auto-Construct Path]
+	// Standardize behavior: User provides base (e.g. "https://generativelanguage.googleapis.com/v1beta")
+	// Adapter appends: "/models/{model}:{action}"
+	
+	// Remove trailing slash for consistency
+	basePath := strings.TrimSuffix(u.Path, "/")
+	
+	// Determine action
+	action := "generateContent"
+	if originalReq.Stream {
+		action = "streamGenerateContent"
+	}
+
+	// Construct new path: /v1beta/models/gemini-pro:generateContent
+	// Only append if not already present (backward compatibility)
+	if !strings.Contains(basePath, "/models/") {
+		u.Path = fmt.Sprintf("%s/models/%s:%s", basePath, upstreamModel, action)
+	} else {
+		// If user provided full path but switched stream mode, we try to fix it
+		if originalReq.Stream && strings.Contains(u.Path, "generateContent") && !strings.Contains(u.Path, "streamGenerateContent") {
+			u.Path = strings.Replace(u.Path, "generateContent", "streamGenerateContent", 1)
+		}
 	}
 
 	q := u.Query()

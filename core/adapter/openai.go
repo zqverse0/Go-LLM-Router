@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"llm-gateway/models"
-	"net/http"
-	"net/url"
-
-	"github.com/gin-gonic/gin"
-
-)
+		"net/http"
+		"net/url"
+		"strings"
+	
+		"github.com/gin-gonic/gin"
+	)
 
 // OpenAIAdapter OpenAI 协议（透传模式）
 type OpenAIAdapter struct{}
@@ -31,12 +31,21 @@ func (a *OpenAIAdapter) ConvertRequest(ctx *gin.Context, originalReq models.Chat
 	}
 
 	// 验证 URL
-	_, err = url.Parse(baseURL)
+	u, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid upstream url: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx.Request.Context(), "POST", baseURL, bytes.NewBuffer(reqBodyBytes))
+	// [Auto-Append Endpoint]
+	// Standardize behavior: User provides base (e.g. "https://api.openai.com/v1")
+	// Adapter checks and appends "/chat/completions" if missing
+	if !strings.HasSuffix(u.Path, "/chat/completions") {
+		// Avoid double slash
+		basePath := strings.TrimSuffix(u.Path, "/")
+		u.Path = basePath + "/chat/completions"
+	}
+
+	req, err := http.NewRequestWithContext(ctx.Request.Context(), "POST", u.String(), bytes.NewBuffer(reqBodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
