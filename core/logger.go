@@ -89,13 +89,30 @@ func (l *AsyncRequestLogger) flush(logs []*models.RequestLog) {
 		return
 	}
 	
-	// 1. 批量插入日志
+	l.logger.Infof("[Logger] Flushing %d logs to DB...", len(logs))
+
+	// 1. 批量插入日志 (Restored for Request History UI)
 	if err := l.db.CreateInBatches(logs, len(logs)).Error; err != nil {
-		l.logger.Errorf("Failed to flush logs to database: %v", err)
+		l.logger.Errorf("[Logger] Failed to flush logs: %v", err)
 	}
 
-	// 2. 聚合统计更新 (内存聚合以减少 DB 锁竞争)
-	// Key: ModelConfigID
+	// 2. 严格清理 (Strict Pruning): 只保留最新的 100 条
+	// 这保证了数据库永远不会膨胀，同时让前端有数据可看
+	go func() {
+		var count int64
+		l.db.Model(&models.RequestLog{}).Count(&count)
+		if count > 100 {
+			var pivotID uint
+			// 找到第 100 条最新的日志 ID
+			l.db.Model(&models.RequestLog{}).Select("id").Order("id desc").Offset(100).Limit(1).Scan(&pivotID)
+			if pivotID > 0 {
+				// 删除比它旧的所有记录
+				l.db.Where("id <= ?", pivotID).Delete(&models.RequestLog{})
+			}
+		}
+	}()
+
+	// 3. 聚合统计更新
 	type statDelta struct {
 		Success       int
 		Error         int
@@ -106,17 +123,14 @@ func (l *AsyncRequestLogger) flush(logs []*models.RequestLog) {
 	statsMap := make(map[uint]*statDelta)
 
 	for _, log := range logs {
-		// 跳过未关联模型的日志（如 404/401 或系统日志）
 		if log.ModelConfigID == 0 {
 			continue
 		}
-
 		delta, exists := statsMap[log.ModelConfigID]
 		if !exists {
 			delta = &statDelta{ModelGroupID: log.ModelGroupID}
 			statsMap[log.ModelConfigID] = delta
 		}
-
 		delta.RequestCount++
 		if log.StatusCode >= 200 && log.StatusCode < 500 && log.StatusCode != 429 {
 			delta.Success++
@@ -126,55 +140,32 @@ func (l *AsyncRequestLogger) flush(logs []*models.RequestLog) {
 		delta.TotalLatency += float64(log.Duration)
 	}
 
-	// 3. 执行批量更新
-	// 由于 GORM 不支持完美的 Batch Update Increment，我们使用原生 SQL 或循环更新
-	// 考虑到 batchSize 较小 (100)，循环更新是可以接受的，或者使用 Case When
-	// 为了简单且安全，我们对涉及的模型执行原子更新 SQL
+	// 3. 执行更新 (Robust Upsert)
 	for modelID, delta := range statsMap {
-		err := l.db.Exec(`
-			INSERT INTO model_stats (created_at, updated_at, model_config_id, model_group_id, success, error, total_latency, request_count, total_requests)
-			VALUES (CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(model_config_id) DO UPDATE SET
-				updated_at = CURRENT_TIMESTAMP,
-				success = success + excluded.success,
-				error = error + excluded.error,
-				total_latency = total_latency + excluded.total_latency,
-				request_count = request_count + excluded.request_count,
-				total_requests = total_requests + excluded.total_requests
-		`, modelID, delta.ModelGroupID, delta.Success, delta.Error, delta.TotalLatency, delta.RequestCount, delta.RequestCount).Error
-
-		if err != nil {
-			// 如果 SQLite 不支持 ON CONFLICT (旧版本)，尝试先 Update 若无则 Create
-			// 但 GORM AutoMigrate 通常不建立唯一索引 unless defined in struct
-			// 我们需要在 schema.go 确保 ModelStats 对 ModelConfigID 有唯一索引，或者手动处理
-			// 假设 ModelStats 与 ModelConfig 是一对一关系，我们应该先尝试 Update
-			
-			// Fallback Update
-			res := l.db.Exec(`
-				UPDATE model_stats SET 
-					success = success + ?, 
-					error = error + ?, 
-					total_latency = total_latency + ?, 
-					request_count = request_count + ?,
-					total_requests = total_requests + ?
-				WHERE model_config_id = ?
-			`, delta.Success, delta.Error, delta.TotalLatency, delta.RequestCount, delta.RequestCount, modelID)
-			
-			if res.Error != nil {
-				l.logger.Errorf("Failed to update stats for model %d: %v", modelID, res.Error)
-			} else if res.RowsAffected == 0 {
-				// Insert new record
-				newStat := models.ModelStats{
-					ModelConfigID: modelID,
-					ModelGroupID:  delta.ModelGroupID,
-					Success:       delta.Success,
-					Error:         delta.Error,
-					TotalLatency:  delta.TotalLatency,
-					RequestCount:  delta.RequestCount,
-					TotalRequests: int64(delta.RequestCount),
-				}
-				l.db.Create(&newStat)
+		// First try to find existing stat
+		var stat models.ModelStats
+		err := l.db.Where("model_config_id = ?", modelID).First(&stat).Error
+		
+		if err == nil {
+			// Update existing
+			stat.Success += delta.Success
+			stat.Error += delta.Error
+			stat.TotalLatency += delta.TotalLatency
+			stat.RequestCount += delta.RequestCount
+			stat.TotalRequests += int64(delta.RequestCount)
+			l.db.Save(&stat)
+		} else {
+			// Create new
+			newStat := models.ModelStats{
+				ModelConfigID: modelID,
+				ModelGroupID:  delta.ModelGroupID,
+				Success:       delta.Success,
+				Error:         delta.Error,
+				TotalLatency:  delta.TotalLatency,
+				RequestCount:  delta.RequestCount,
+				TotalRequests: int64(delta.RequestCount),
 			}
+			l.db.Create(&newStat)
 		}
 	}
 }

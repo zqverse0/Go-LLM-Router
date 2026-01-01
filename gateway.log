@@ -57,3 +57,213 @@ nohup: failed to run command './gateway': No such file or directory
 {"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1/images/generations (Tongyi-MAI/Z-Image-Turbo) | Key: ...351d","time":"2026-01-01T18:21:25+08:00"}
 {"level":"info","msg":"Shutting down server...","time":"2026-01-01T18:24:28+08:00"}
 {"level":"info","msg":"Server exited","time":"2026-01-01T18:24:28+08:00"}
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T18:59:00+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T18:59:00+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T18:59:00+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T18:59:00+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T19:08:59+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T19:08:59+08:00"}
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T19:10:21+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T19:10:21+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T19:10:21+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T19:10:21+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...fa2c","time":"2026-01-01T19:13:39+08:00"}
+{"level":"error","msg":"Upstream Auth Error (401). Marking key dead.","time":"2026-01-01T19:13:40+08:00"}
+{"level":"info","msg":"[Attempt 2] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T19:13:40+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T19:13:40+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T19:13:41+08:00"}
+{"level":"warning","msg":"Upstream 429 (Rate Limit). Marking key cooldown.","time":"2026-01-01T19:13:41+08:00"}
+{"level":"warning","msg":"[Attempt 2] Routing failed: all keys for model Qwen/Qwen3-Coder-480B-A35B-Instruct are in cooldown or dead","time":"2026-01-01T19:13:41+08:00"}
+{"level":"error","msg":"All 3 retries failed. Last error: all keys for model Qwen/Qwen3-Coder-480B-A35B-Instruct are in cooldown or dead","time":"2026-01-01T19:13:41+08:00"}
+{"level":"warning","msg":"[Attempt 1] Routing failed: all keys for model Qwen/Qwen3-Coder-480B-A35B-Instruct are in cooldown or dead","time":"2026-01-01T19:14:20+08:00"}
+{"level":"error","msg":"All 3 retries failed. Last error: all keys for model Qwen/Qwen3-Coder-480B-A35B-Instruct are in cooldown or dead","time":"2026-01-01T19:14:20+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://generativelanguage.googleapis.com/v1beta (gemini-2.5-flash) | Key: ...nAHQ","time":"2026-01-01T19:15:01+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://generativelanguage.googleapis.com/v1beta (gemini-2.5-flash) | Key: ...ayg0","time":"2026-01-01T19:15:03+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://generativelanguage.googleapis.com/v1beta (gemini-2.5-flash) | Key: ...nAHQ","time":"2026-01-01T19:15:04+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T19:18:40+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T19:21:30+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T19:21:30+08:00"}
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T19:21:32+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T19:21:32+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T19:21:32+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T19:21:32+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...fa2c","time":"2026-01-01T19:22:31+08:00"}
+{"level":"error","msg":"Upstream Auth Error (401). Marking key dead.","time":"2026-01-01T19:22:32+08:00"}
+{"level":"info","msg":"[Attempt 2] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T19:22:32+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T19:28:40+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T19:28:40+08:00"}
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T19:28:42+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T19:28:42+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T19:28:42+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T19:28:42+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...fa2c","time":"2026-01-01T19:30:21+08:00"}
+{"level":"error","msg":"Upstream Auth Error (401). Marking key dead.","time":"2026-01-01T19:30:21+08:00"}
+{"level":"info","msg":"[Attempt 2] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T19:30:21+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T19:38:36+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T19:38:36+08:00"}
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T19:43:35+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T19:43:35+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T19:43:35+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T19:43:35+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...fa2c","time":"2026-01-01T19:49:44+08:00"}
+{"level":"error","msg":"Upstream Auth Error (401). Marking key dead.","time":"2026-01-01T19:49:44+08:00"}
+{"level":"info","msg":"[Attempt 2] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T19:49:44+08:00"}
+{"level":"info","msg":"[Logger] Flushing 1 logs to DB...","time":"2026-01-01T19:49:50+08:00"}
+{"level":"info","msg":"[Logger] Updating stats for Model 2 (Requests: +1)","time":"2026-01-01T19:49:50+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T19:52:45+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T19:52:45+08:00"}
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T19:52:47+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T19:52:47+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T19:52:47+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T19:52:47+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T20:03:19+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T20:03:19+08:00"}
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T20:03:21+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T20:03:21+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T20:03:21+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T20:03:21+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...fa2c","time":"2026-01-01T20:04:22+08:00"}
+{"level":"error","msg":"Upstream Auth Error (401). Marking key dead.","time":"2026-01-01T20:04:22+08:00"}
+{"level":"info","msg":"[Attempt 2] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T20:04:22+08:00"}
+{"level":"info","msg":"[Logger] Flushing 1 logs to DB...","time":"2026-01-01T20:04:26+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T20:09:36+08:00"}
+{"level":"info","msg":"[INFO] CreateModel | Group: Ai-code | Model: Qwen/Qwen3-235B-A22B | Keys: 1 | Success","time":"2026-01-01T20:09:36+08:00"}
+{"level":"warning","msg":"[Attempt 1] Routing failed: group not found or has no models","time":"2026-01-01T20:10:21+08:00"}
+{"level":"error","msg":"All 3 retries failed. Last error: group not found or has no models","time":"2026-01-01T20:10:21+08:00"}
+{"level":"info","msg":"[Logger] Flushing 1 logs to DB...","time":"2026-01-01T20:10:26+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T20:10:27+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T20:10:28+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-Coder-480B-A35B-Instruct) | Key: ...351d","time":"2026-01-01T20:10:29+08:00"}
+{"level":"warning","msg":"Upstream 429 (Rate Limit). Marking key cooldown.","time":"2026-01-01T20:10:29+08:00"}
+{"level":"warning","msg":"[Attempt 2] Routing failed: all keys for model Qwen/Qwen3-Coder-480B-A35B-Instruct are in cooldown or dead","time":"2026-01-01T20:10:29+08:00"}
+{"level":"error","msg":"All 3 retries failed. Last error: all keys for model Qwen/Qwen3-Coder-480B-A35B-Instruct are in cooldown or dead","time":"2026-01-01T20:10:29+08:00"}
+{"level":"info","msg":"[Logger] Flushing 3 logs to DB...","time":"2026-01-01T20:10:31+08:00"}
+{"level":"warning","msg":"[Attempt 1] Routing failed: group not found or has no models","time":"2026-01-01T20:10:33+08:00"}
+{"level":"error","msg":"All 3 retries failed. Last error: group not found or has no models","time":"2026-01-01T20:10:33+08:00"}
+{"level":"info","msg":"[Logger] Flushing 1 logs to DB...","time":"2026-01-01T20:10:36+08:00"}
+{"level":"warning","msg":"[Attempt 1] Routing failed: group not found or has no models","time":"2026-01-01T20:12:03+08:00"}
+{"level":"error","msg":"All 3 retries failed. Last error: group not found or has no models","time":"2026-01-01T20:12:03+08:00"}
+{"level":"info","msg":"[Logger] Flushing 1 logs to DB...","time":"2026-01-01T20:12:06+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T20:15:19+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T20:15:19+08:00"}
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T20:15:20+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T20:15:20+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T20:15:20+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T20:15:20+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-235B-A22B) | Key: ...5acf","time":"2026-01-01T20:15:56+08:00"}
+{"level":"info","msg":"[Logger] Flushing 1 logs to DB...","time":"2026-01-01T20:16:00+08:00"}
+{"level":"info","msg":"[INFO] CreateAPIKey | Model: 6 | Success","time":"2026-01-01T20:16:50+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T20:16:50+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T20:16:57+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T20:17:00+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T20:17:13+08:00"}
+{"level":"info","msg":"[INFO] CreateAPIKey | Model: 6 | Success","time":"2026-01-01T20:17:17+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T20:17:17+08:00"}
+{"level":"info","msg":"","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\u001b[31m2026/01/01 20:17:28 [Recovery] 2026/01/01 - 20:17:28 panic recovered:","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"runtime error: index out of range [-1]","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.11.linux-amd64/src/runtime/panic.go:115 (0x43bdd3)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\tgoPanicIndex: panic(boundsError{x: int64(x), signed: true, y: y, code: boundsIndex})","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/core/load_balancer.go:203 (0x8218dd)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\t(*LoadBalancer).Route: k := keys[(int(currentCount-1)+i)%len(keys)]","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/core/proxy.go:86 (0x82361c)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\t(*ProxyHandler).ProxyRequest: routing, err = h.lb.Route(requestData.Model)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/core/proxy.go:71 (0x86d907)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\tmain.(*ProxyHandler).HandleProxyRequest.func6: h.ProxyRequest(c, req)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/context.go:174 (0x8752cf)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\t(*Context).Next: c.handlers[c.index](c)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/cmd/middleware.go:65 (0x875153)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\tAdminAuthMiddleware.func1: c.Next()","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/cmd/handlers.go:963 (0x86d991)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\tmain.verifyAdminToken.func5: AdminAuthMiddleware()(c)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/context.go:174 (0x800daa)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\t(*Context).Next: c.handlers[c.index](c)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/cmd/middleware.go:80 (0x86da49)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\tmain.RequestLoggerMiddleware.func4: c.Next()","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/context.go:174 (0x800daa)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\t(*Context).Next: c.handlers[c.index](c)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/cmd/middleware.go:197 (0x876aed)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\tmain.RateLimitMiddleware.func3: c.Next()","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/context.go:174 (0x800daa)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\t(*Context).Next: c.handlers[c.index](c)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/cmd/main.go:262 (0x876916)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\tmain.corsMiddleware.func2: c.Next()","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/context.go:174 (0x80594e)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\t(*Context).Next: c.handlers[c.index](c)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/recovery.go:102 (0x80593b)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\tCustomRecoveryWithWriter.func1: c.Next()","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/context.go:174 (0x80478d)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\t(*Context).Next: c.handlers[c.index](c)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/gin.go:620 (0x804424)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\t(*Engine).handleHTTPRequest: c.Next()","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/gin.go:576 (0x8040c9)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\t(*Engine).ServeHTTP: engine.handleHTTPRequest(c)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.11.linux-amd64/src/net/http/server.go:3301 (0x72442d)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\tserverHandler.ServeHTTP: handler.ServeHTTP(rw, req)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.11.linux-amd64/src/net/http/server.go:2102 (0x705d44)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\t(*conn).serve: serverHandler{c.server}.ServeHTTP(w, w.req)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.11.linux-amd64/src/runtime/asm_amd64.s:1700 (0x47bc80)","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\tgoexit: BYTE\t$0x90\t// NOP","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"\u001b[0m","time":"2026-01-01T20:17:28+08:00"}
+{"level":"info","msg":"","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\u001b[31m2026/01/01 20:18:09 [Recovery] 2026/01/01 - 20:18:09 panic recovered:","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"runtime error: index out of range [-1]","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.11.linux-amd64/src/runtime/panic.go:115 (0x43bdd3)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\tgoPanicIndex: panic(boundsError{x: int64(x), signed: true, y: y, code: boundsIndex})","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/core/load_balancer.go:203 (0x8218dd)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\t(*LoadBalancer).Route: k := keys[(int(currentCount-1)+i)%len(keys)]","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/core/proxy.go:86 (0x82361c)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\t(*ProxyHandler).ProxyRequest: routing, err = h.lb.Route(requestData.Model)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/core/proxy.go:71 (0x86d907)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\tmain.(*ProxyHandler).HandleProxyRequest.func6: h.ProxyRequest(c, req)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/context.go:174 (0x8752cf)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\t(*Context).Next: c.handlers[c.index](c)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/cmd/middleware.go:65 (0x875153)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\tAdminAuthMiddleware.func1: c.Next()","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/cmd/handlers.go:963 (0x86d991)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\tmain.verifyAdminToken.func5: AdminAuthMiddleware()(c)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/context.go:174 (0x800daa)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\t(*Context).Next: c.handlers[c.index](c)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/cmd/middleware.go:80 (0x86da49)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\tmain.RequestLoggerMiddleware.func4: c.Next()","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/context.go:174 (0x800daa)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\t(*Context).Next: c.handlers[c.index](c)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/cmd/middleware.go:197 (0x876aed)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\tmain.RateLimitMiddleware.func3: c.Next()","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/context.go:174 (0x800daa)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\t(*Context).Next: c.handlers[c.index](c)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/Public/Go-LLM-Router/cmd/main.go:262 (0x876916)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\tmain.corsMiddleware.func2: c.Next()","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/context.go:174 (0x80594e)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\t(*Context).Next: c.handlers[c.index](c)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/recovery.go:102 (0x80593b)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\tCustomRecoveryWithWriter.func1: c.Next()","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/context.go:174 (0x80478d)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\t(*Context).Next: c.handlers[c.index](c)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/gin.go:620 (0x804424)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\t(*Engine).handleHTTPRequest: c.Next()","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/github.com/gin-gonic/gin@v1.9.1/gin.go:576 (0x8040c9)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\t(*Engine).ServeHTTP: engine.handleHTTPRequest(c)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.11.linux-amd64/src/net/http/server.go:3301 (0x72442d)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\tserverHandler.ServeHTTP: handler.ServeHTTP(rw, req)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.11.linux-amd64/src/net/http/server.go:2102 (0x705d44)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\t(*conn).serve: serverHandler{c.server}.ServeHTTP(w, w.req)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"/home/zcs/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.24.11.linux-amd64/src/runtime/asm_amd64.s:1700 (0x47bc80)","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\tgoexit: BYTE\t$0x90\t// NOP","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"\u001b[0m","time":"2026-01-01T20:18:09+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T20:21:12+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T20:21:12+08:00"}
+{"level":"info","msg":"Database initialized successfully","time":"2026-01-01T20:21:14+08:00"}
+{"level":"info","msg":"🔒 Encryption enabled (using auto-managed key in 'gateway.key')","time":"2026-01-01T20:21:14+08:00"}
+{"level":"info","msg":"Loaded 4 model groups (LoadBalancer mode)","time":"2026-01-01T20:21:14+08:00"}
+{"level":"info","msg":"Starting LLM Gateway on port 8000","time":"2026-01-01T20:21:14+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-235B-A22B) | Key: ...351d","time":"2026-01-01T20:21:25+08:00"}
+{"level":"info","msg":"[Logger] Flushing 1 logs to DB...","time":"2026-01-01T20:21:29+08:00"}
+{"level":"info","msg":"[Attempt 1] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-235B-A22B) | Key: ...fa2c","time":"2026-01-01T20:22:03+08:00"}
+{"level":"error","msg":"Upstream Auth Error (401). Marking key dead.","time":"2026-01-01T20:22:03+08:00"}
+{"level":"info","msg":"[Attempt 2] Selected upstream: https://api-inference.modelscope.cn/v1 (Qwen/Qwen3-235B-A22B) | Key: ...351d","time":"2026-01-01T20:22:03+08:00"}
+{"level":"info","msg":"[Logger] Flushing 1 logs to DB...","time":"2026-01-01T20:22:14+08:00"}
+{"level":"info","msg":"Shutting down server...","time":"2026-01-01T20:24:18+08:00"}
+{"level":"info","msg":"Server exited","time":"2026-01-01T20:24:18+08:00"}

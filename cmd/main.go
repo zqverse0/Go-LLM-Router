@@ -164,10 +164,21 @@ func initDatabase(log *logrus.Logger) (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to connect database: %w", err)
 	}
 
+	// [DB Optimization]
+	// 1. Disable WAL to keep a single file (classic mode)
+	db.Exec("PRAGMA journal_mode = DELETE;")
+	// 2. Enable Auto-Vacuum to reclaim disk space after deletes
+	db.Exec("PRAGMA auto_vacuum = FULL;")
+	// 3. Force a VACUUM now to shrink the file
+	db.Exec("VACUUM;")
+
 	// 自动迁移
 	if err := models.AutoMigrate(db); err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
+
+	// 强制创建索引 (Task: Fix Stats Upsert)
+	db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_model_stats_config_id ON model_stats(model_config_id)")
 
 	// 初始化默认数据
 	initialAdminKey, err := models.InitializeDefaultData(db)

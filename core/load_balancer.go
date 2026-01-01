@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"llm-gateway/models"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -130,7 +132,21 @@ func (lb *LoadBalancer) RefreshData() error {
 }
 
 // Route 执行路由逻辑
-func (lb *LoadBalancer) Route(groupID string) (*models.RoutingInfo, error) {
+func (lb *LoadBalancer) Route(requestModel string) (*models.RoutingInfo, error) {
+	// [Feature] Model Pinning: "group$index"
+	// Example: "Ai-code$2" -> Use 2nd model in "Ai-code" group
+	var groupID string
+	var pinIndex int = -1
+
+	if idx := strings.Index(requestModel, "$"); idx != -1 {
+		groupID = requestModel[:idx]
+		if i, err := strconv.Atoi(requestModel[idx+1:]); err == nil && i > 0 {
+			pinIndex = i - 1 // Convert 1-based index to 0-based
+		}
+	} else {
+		groupID = requestModel
+	}
+
 	lb.mu.RLock()
 	state, exists := lb.groupStates[groupID]
 	lb.mu.RUnlock()
@@ -139,25 +155,31 @@ func (lb *LoadBalancer) Route(groupID string) (*models.RoutingInfo, error) {
 		return nil, ErrGroupNotFound
 	}
 
-	// 1. 获取策略 (Task 1: Dynamic Strategy)
-	strategyName := state.Config.Strategy
-	if strategyName == "" {
-		strategyName = "round_robin" // Default
-	}
-	
-	strategy, ok := lb.strategies[strategyName]
-	if !ok {
-		// Fallback to default if strategy not found
-		strategy = lb.strategies["round_robin"] 
-	}
+	var selectedModel *models.ModelConfig
+	var err error
 
-	// 2. 原子操作增加计数 (Task 2: Concurrency)
-	currentCount := state.RequestCounter.Add(1)
-
-	// 3. 执行策略选择模型
-	selectedModel, err := strategy.Select(state.Models, currentCount)
-	if err != nil {
-		return nil, err
+	// 1. Select Model (Strategy vs Pinning)
+	if pinIndex != -1 {
+		// Bypass strategy, force select
+		if pinIndex >= len(state.Models) {
+			return nil, fmt.Errorf("model index %d out of bounds for group %s", pinIndex+1, groupID)
+		}
+		selectedModel = state.Models[pinIndex]
+	} else {
+		// Use Strategy
+		strategyName := state.Config.Strategy
+		if strategyName == "" {
+			strategyName = "round_robin"
+		}
+		strategy, ok := lb.strategies[strategyName]
+		if !ok {
+			strategy = lb.strategies["round_robin"]
+		}
+		currentCount := state.RequestCounter.Add(1)
+		selectedModel, err = strategy.Select(state.Models, currentCount)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 4. 选择 Key (保留原有逻辑，但从预解密的 state.Keys 中读取)
@@ -168,9 +190,23 @@ func (lb *LoadBalancer) Route(groupID string) (*models.RoutingInfo, error) {
 
 	// 寻找第一个可用的 Key
 	var finalKey string
-	// 使用相同的计数器来轮询 Key
+	// 无论是否 Pinning，Key 都应该轮询以实现负载均衡
+	// 使用 Add(1) 确保 currentCount 总是单调递增且 > 0 (只要初始不是0，但Add后肯定是正数)
+	// 如果担心溢出，uint64 很大，很难溢出。即使溢出回绕，% len 依然安全。
+	// 为了绝对安全，我们把 currentCount 转为 uint64 参与计算
+	
+	// 注意：之前这里逻辑复杂化了，导致了 currentCount=0 时 -1 的 panic
+	// 统一逻辑：每次 Route 都消耗一个计数（即使是 Pinning），用来转动 Key
+	count := state.RequestCounter.Add(1)
+
 	for i := 0; i < len(keys); i++ {
-		k := keys[(int(currentCount-1)+i)%len(keys)]
+		// (count + i) 可能会很大，但 % len 会将其限制在 [0, len-1]
+		// 我们不需要减 1，因为 count 是任意的起始点，只要它是递增的就行
+		idx := (int(count) + i) % len(keys)
+		// 防止负数索引 (尽管 uint64 转 int 在极值时可能变负，但概率极低，防御一下)
+		if idx < 0 { idx = -idx }
+		
+		k := keys[idx]
 		if lb.keyManager.IsAvailable(k) {
 			finalKey = k
 			break

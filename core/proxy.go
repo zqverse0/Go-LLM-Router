@@ -74,12 +74,9 @@ func (h *ProxyHandler) HandleProxyRequest() gin.HandlerFunc {
 
 // ProxyRequest 处理代理请求 (包含重试逻辑)
 func (h *ProxyHandler) ProxyRequest(c *gin.Context, requestData models.ChatCompletionRequest) {
-	startTime := time.Now()
-	clientIP := getClientIP(c)
-	requestID := fmt.Sprintf("req_%d", startTime.UnixNano())
+	// startTime := time.Now() // 保留用于耗时计算，但实际上中间件也在算
 
 	var lastErr error
-	var finalRespStatusCode int
 	var routing *models.RoutingInfo
 	
 	// --- 重试循环 ---
@@ -96,6 +93,9 @@ func (h *ProxyHandler) ProxyRequest(c *gin.Context, requestData models.ChatCompl
 
 		h.logger.Infof("[Attempt %d] Selected upstream: %s (%s) | Key: ...%s", 
 			i+1, routing.UpstreamURL, routing.UpstreamModel,  safeKeyMask(routing.APIKey))
+
+		// 为中间件设置路由信息
+		c.Set("routing_info", routing)
 
 		// 2. 获取适配器
 		adp := h.getAdapter(routing.Provider)
@@ -120,7 +120,7 @@ func (h *ProxyHandler) ProxyRequest(c *gin.Context, requestData models.ChatCompl
 			continue // 立即重试
 		}
 		
-		finalRespStatusCode = resp.StatusCode
+		// finalRespStatusCode = resp.StatusCode // Variable removed
 
 		// 429 Too Many Requests
 		if resp.StatusCode == 429 {
@@ -158,8 +158,6 @@ func (h *ProxyHandler) ProxyRequest(c *gin.Context, requestData models.ChatCompl
 			h.logger.Errorf("Failed to handle response: %v", err)
 		}
 		
-		// 记录日志并退出
-		recordLog(h.asyncLogger, requestID, c, clientIP, startTime, routing, resp.StatusCode)
 		return
 	}
 
@@ -168,9 +166,6 @@ func (h *ProxyHandler) ProxyRequest(c *gin.Context, requestData models.ChatCompl
 	c.JSON(502, gin.H{
 		"error": fmt.Sprintf("Upstream unavailable after %d retries. Last error: %v", MaxRetries, lastErr),
 	})
-	
-	// 记录失败日志
-	recordLog(h.asyncLogger, requestID, c, clientIP, startTime, routing, finalRespStatusCode)
 }
 
 func safeKeyMask(k string) string {
@@ -178,39 +173,4 @@ func safeKeyMask(k string) string {
 		return "***"
 	}
 	return k[len(k)-4:]
-}
-
-func recordLog(logger *AsyncRequestLogger, reqID string, c *gin.Context, ip string, start time.Time, routing *models.RoutingInfo, status int) {
-	if logger == nil {
-		return
-	}
-	group := ""
-	model := ""
-	provider := ""
-	var modelConfigID uint
-	var modelGroupID uint
-
-	if routing != nil {
-		group = routing.GroupID
-		model = routing.UpstreamModel
-		provider = routing.Provider
-		modelConfigID = routing.ModelConfigID
-		modelGroupID = routing.ModelGroupID
-	}
-	
-	logger.Log(&models.RequestLog{
-		RequestID:        reqID,
-		CreatedAt:        start,
-		Method:           c.Request.Method,
-		Path:             c.Request.URL.Path,
-		StatusCode:       status,
-		Duration:         time.Since(start).Milliseconds(),
-		IP:               ip,
-		ModelGroup:       group,
-		UsedModel:        model,
-		Provider:         provider,
-		ModelConfigID:    modelConfigID,
-		ModelGroupID:     modelGroupID,
-		UserAgent:        c.Request.UserAgent(),
-	})
 }

@@ -83,7 +83,8 @@ func RequestLoggerMiddleware(asyncLogger *core.AsyncRequestLogger) gin.HandlerFu
 		statusCode := c.Writer.Status()
 		clientIP := c.ClientIP()
 
-		if asyncLogger != nil && (statusCode >= 400 || strings.HasPrefix(c.Request.URL.Path, "/admin")) {
+		// 记录所有非 OPTIONS 请求 (Task B: Unified Logging)
+		if asyncLogger != nil && c.Request.Method != "OPTIONS" {
 			logEntry := &models.RequestLog{
 				CreatedAt:  start,
 				Method:     c.Request.Method,
@@ -93,8 +94,25 @@ func RequestLoggerMiddleware(asyncLogger *core.AsyncRequestLogger) gin.HandlerFu
 				IP:         clientIP,
 				UserAgent:  c.Request.UserAgent(),
 			}
+			
+			// 尝试从 Context 获取路由信息 (由 ProxyHandler 设置)
+			if rid, exists := c.Get("routing_info"); exists {
+				if r, ok := rid.(*models.RoutingInfo); ok {
+					logEntry.ModelGroup = r.GroupID
+					logEntry.UsedModel = r.UpstreamModel
+					logEntry.Provider = r.Provider
+					logEntry.ModelConfigID = r.ModelConfigID
+					logEntry.ModelGroupID = r.ModelGroupID
+				}
+			}
+
 			if statusCode >= 400 && len(bodyBytes) > 0 {
-				logEntry.ErrorMsg = string(bodyBytes)
+				// [Optimization] Truncate error message to avoid DB bloat
+				errMsg := string(bodyBytes)
+				if len(errMsg) > 2048 {
+					errMsg = errMsg[:2048] + "...(truncated)"
+				}
+				logEntry.ErrorMsg = errMsg
 			}
 			
 			asyncLogger.Log(logEntry)

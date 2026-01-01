@@ -868,8 +868,12 @@
             const headers = new Headers({ 'Content-Type': 'application/json' });
             if (token) headers.append('Authorization', 'Bearer ' + token.trim());
             try {
+                // DEBUG: Log API calls
+                console.log(`[API] Fetching ${url}`);
                 const resp = await fetch(url, { ...options, headers });
                 const data = await resp.json();
+                console.log(`[API] Response from ${url}:`, data);
+
                 if (!resp.ok) {
                     if (resp.status === 401) { localStorage.removeItem('admin_key'); showModal('loginModal'); }
                     throw new Error(data?.error?.message || data?.message || "Request failed");
@@ -877,6 +881,7 @@
                 document.getElementById('networkErrorBanner').classList.add('hidden');
                 return { resp, data };
             } catch (err) {
+                console.error(`[API] Error fetching ${url}:`, err);
                 if (err instanceof TypeError) document.getElementById('networkErrorBanner').classList.remove('hidden');
                 throw err;
             }
@@ -884,6 +889,7 @@
 
         // --- Render ---
         function renderDashboard() {
+            console.log("Rendering Dashboard with data:", dashboardData);
             const container = document.getElementById('groupsContainer');
             container.innerHTML = '';
             if (!dashboardData.length) {
@@ -919,18 +925,39 @@
         function maskApiKey(k) { return k && k.length > 8 ? k.substring(0, 4) + '•••' + k.substring(k.length - 4) : k; }
 
         function updateStats() {
-            let groups = dashboardData.length, models = 0, keys = 0, reqs = 0;
+            // Ensure dashboardData is populated
+            if (!dashboardData || !Array.isArray(dashboardData)) return;
+
+            let groups = dashboardData.length;
+            let models = 0;
+            let keys = 0;
+            let reqs = 0;
+
             dashboardData.forEach(g => {
-                models += g.model_count;
-                g.details?.models?.forEach(m => { 
-                    keys += m.api_keys?.length || 0; 
-                    reqs += m.stats?.total_requests || 0; 
-                });
+                // Backend returns 'model_count' in group info
+                models += (g.model_count || 0);
+                
+                // For keys and reqs, we need the detailed 'models' list (which is loaded async)
+                if (g.details && g.details.models) {
+                    g.details.models.forEach(m => { 
+                        keys += (m.api_keys ? m.api_keys.length : 0); 
+                        // Backend Stats Preload ensures this exists, but fallback to 0
+                        reqs += (m.stats ? m.stats.total_requests : 0); 
+                    });
+                }
             });
-            document.getElementById('totalGroups').textContent = groups;
-            document.getElementById('totalModels').textContent = models;
-            document.getElementById('totalKeys').textContent = keys;
-            document.getElementById('totalRequests').textContent = reqs;
+
+            // Update DOM with animation effect (simple transition)
+            animateValue('totalGroups', groups);
+            animateValue('totalModels', models);
+            animateValue('totalKeys', keys);
+            animateValue('totalRequests', reqs);
+        }
+
+        function animateValue(id, end) {
+            const obj = document.getElementById(id);
+            if (!obj) return;
+            obj.textContent = end.toLocaleString(); // Format with commas
         }
 
         // --- Logs Logic ---
@@ -949,45 +976,124 @@
         function showLogsModal() { switchLogTab('request'); showModal('logsModal'); }
 
         async function loadLogs(offset) {
+            console.log(`Loading logs, offset: ${offset}`);
             const list = document.getElementById('logsList'), loading = document.getElementById('logsLoading'), empty = document.getElementById('logsEmpty');
             list.innerHTML = ''; loading.classList.remove('hidden'); empty.classList.add('hidden');
             try {
                 const { data } = await fetchAPI(`/admin/logs?limit=${LOGS_LIMIT}&offset=${offset}`);
                 const logs = data.data.logs || [], total = data.data.total || 0;
+                console.log("Logs loaded:", logs.length, "Total:", total);
+
                 loading.classList.add('hidden');
-                if (!logs.length) empty.classList.remove('hidden');
-                else { logs.forEach(l => list.innerHTML += createLogRow(l)); renderIcons(); }
+                if (!logs.length) {
+                    empty.classList.remove('hidden');
+                } else { 
+                    logs.forEach(l => list.innerHTML += createLogRow(l)); 
+                    renderIcons(); 
+                }
                 logsOffset = offset;
                 document.getElementById('logsPrevBtn').disabled = offset <= 0;
                 document.getElementById('logsNextBtn').disabled = (offset + LOGS_LIMIT) >= total;
                 document.getElementById('logsPaginationInfo').textContent = `Showing ${total ? offset + 1 : 0}-${Math.min(offset + LOGS_LIMIT, total)} of ${total}`;
-            } catch (e) { loading.classList.add('hidden'); }
+            } catch (e) { 
+                console.error("Failed to load logs:", e);
+                loading.classList.add('hidden'); 
+                showToast("Failed to load logs: " + e.message, 'error');
+            }
+        }
+
+        function prevLogs() { if (logsOffset > 0) loadLogs(logsOffset - LOGS_LIMIT); }
+        function nextLogs() { loadLogs(logsOffset + LOGS_LIMIT); }
+        
+        function createLogRow(l) {
+            const date = new Date(l.created_at);
+            let sc = 'text-green-600 bg-green-500/10 border-green-500/20';
+            if (l.status_code >= 400) sc = 'text-yellow-600 bg-yellow-500/10 border-yellow-500/20';
+            if (l.status_code >= 500) sc = 'text-red-600 bg-red-500/10 border-red-500/20';
+            return `<tr class="hover:bg-muted/30 transition-colors">
+                <td class="px-4 py-3 text-xs font-mono text-muted-foreground whitespace-nowrap">${date.toLocaleTimeString()}</td>
+                <td class="px-4 py-3"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${sc}">${l.status_code}</span></td>
+                <td class="px-4 py-3 text-xs font-mono">${l.duration}ms</td>
+                <td class="px-4 py-3 text-xs font-medium">${l.used_model || '-'}</td>
+                <td class="px-4 py-3 text-xs font-mono text-muted-foreground">${l.ip || '-'}</td>
+                <td class="px-4 py-3 text-xs font-mono text-muted-foreground truncate max-w-[100px]" title="${l.request_id}">${l.request_id}</td>
+            </tr>`;
         }
 
         async function loadSystemLogs() {
             const term = document.getElementById('systemLogsTerminal');
             try {
                 const { data } = await fetchAPI('/admin/system-logs');
-                const logs = data.data.logs || 'No logs found.';
-                // Basic coloring for common log patterns
+                const logs = data.data.logs || '';
+                
+                if (!logs) {
+                    term.innerHTML = '<div class="text-zinc-500 italic">No system logs available.</div>';
+                    return;
+                }
+
+                // Parse and beautify JSON logs
                 term.innerHTML = logs.split('\n').map(line => {
-                    if (line.includes("\"level\":\"error\"")) return `<span class=\"text-red-400\">${line}</span>`;
-                    if (line.includes("\"level\":\"warn\"")) return `<span class=\"text-yellow-400\">${line}</span>`;
-                    if (line.includes("\"level\":\"info\"")) return `<span class=\"text-blue-400\">${line}</span>`;
-                    return line;
-                }).join('\n');
+                    if (!line.trim()) return '';
+                    try {
+                        const json = JSON.parse(line);
+                        // Format: [TIME] [LEVEL] Message
+                        const time = new Date(json.time).toLocaleTimeString();
+                        let levelColor = 'text-blue-400';
+                        if (json.level === 'warning') levelColor = 'text-yellow-400';
+                        if (json.level === 'error' || json.level === 'fatal') levelColor = 'text-red-400';
+                        
+                        return `<div class="font-mono mb-0.5 hover:bg-white/5 px-1 rounded">
+                            <span class="text-zinc-500">[${time}]</span>
+                            <span class="${levelColor} font-bold uppercase text-[10px] w-12 inline-block text-center border border-current/20 rounded ml-1 mr-2">${json.level}</span>
+                            <span class="text-zinc-300">${json.msg}</span>
+                        </div>`;
+                    } catch (e) {
+                        // Fallback for non-JSON lines
+                        if (line.includes("GIN")) return `<div class="text-zinc-500">${line}</div>`; // Gin logs
+                        return `<div class="text-zinc-400">${line}</div>`;
+                    }
+                }).join('');
+                
                 term.scrollTop = term.scrollHeight;
             } catch (e) { term.textContent = 'Error loading gateway.log'; }
         }
 
-        function prevLogs() { if (logsOffset > 0) loadLogs(logsOffset - LOGS_LIMIT); }
-        function nextLogs() { loadLogs(logsOffset + LOGS_LIMIT); }
-        function createLogRow(l) {
-            const date = new Date(l.created_at);
-            let sc = 'text-green-600 bg-green-500/10 border-green-500/20';
-            if (l.status_code >= 400) sc = 'text-yellow-600 bg-yellow-500/10 border-yellow-500/20';
-            if (l.status_code >= 500) sc = 'text-red-600 bg-red-500/10 border-red-500/20';
-            return `<tr class="hover:bg-muted/30 transition-colors"><td class="px-4 py-3 text-xs font-mono text-muted-foreground whitespace-nowrap">${date.toLocaleTimeString()}</td><td class="px-4 py-3"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${sc}">${l.status_code}</span></td><td class="px-4 py-3 text-xs font-mono">${l.duration}ms</td><td class="px-4 py-3 text-xs font-medium">${l.used_model || '-'}</td><td class="px-4 py-3 text-xs font-mono text-muted-foreground">${l.ip || '-'}</td><td class="px-4 py-3 text-xs font-mono text-muted-foreground truncate max-w-[100px]" title="${l.request_id}">${l.request_id}</td></tr>`;
+        // ... existing code ...
+
+        function updateStats() {
+            // Ensure dashboardData is populated
+            if (!dashboardData || !Array.isArray(dashboardData)) return;
+
+            let groups = dashboardData.length;
+            let models = 0;
+            let keys = 0;
+            let reqs = 0;
+
+            dashboardData.forEach(g => {
+                // Backend returns 'model_count' in group info
+                models += (g.model_count || 0);
+                
+                // For keys and reqs, we need the detailed 'models' list (which is loaded async)
+                if (g.details && g.details.models) {
+                    g.details.models.forEach(m => { 
+                        keys += (m.api_keys ? m.api_keys.length : 0); 
+                        // Backend Stats Preload ensures this exists, but fallback to 0
+                        reqs += (m.stats ? m.stats.total_requests : 0); 
+                    });
+                }
+            });
+
+            // Update DOM with animation effect (simple transition)
+            animateValue('totalGroups', groups);
+            animateValue('totalModels', models);
+            animateValue('totalKeys', keys);
+            animateValue('totalRequests', reqs);
+        }
+
+        function animateValue(id, end) {
+            const obj = document.getElementById(id);
+            if (!obj) return;
+            obj.textContent = end.toLocaleString(); // Format with commas
         }
 
         // --- Interaction ---
