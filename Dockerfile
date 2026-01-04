@@ -1,68 +1,53 @@
-# Multi-stage Dockerfile for LLM Gateway with SQLite CGO support
-# 构建阶段
-FROM golang:1.21-alpine AS builder
+# Stage 1: Build
+FROM golang:1.24-alpine AS builder
 
-# 设置工作目录
-WORKDIR /app
+# Install build dependencies for CGO (required by SQLite)
+RUN apk add --no-cache build-base
 
-# 安装构建依赖（CGO 需要的 C 编译器）
-RUN apk add --no-cache gcc musl-dev git
+WORKDIR /src
 
-# 复制 go mod 文件
+# Leverage Docker cache for dependencies
 COPY go.mod go.sum ./
-
-# 下载依赖
 RUN go mod download
 
-# 复制源代码
+# Copy source code
 COPY . .
 
-# 构建应用（启用 CGO，并使用编译优化标志）
-# -s: 去除符号表
-# -w: 去除 DWARF 调试信息
-# CGO_ENABLED=1: 支持 SQLite
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
+# Build optimized static binary
+# -s -w: Omit symbol table and debug information
+# -tags musl: Ensure compatibility with alpine's musl libc
+RUN CGO_ENABLED=1 GOOS=linux go build \
     -ldflags="-s -w" \
-    -o gateway \
-    ./cmd/main.go ./cmd/handlers.go ./cmd/handlers_dashboard.go ./cmd/middleware.go
+    -o /app/llm-gateway ./cmd
 
-# 运行阶段
-FROM alpine:latest
+# Stage 2: Final Runtime
+FROM alpine:3.21
 
-# 安装运行时依赖
-RUN apk add --no-cache \
-    ca-certificates \
-    tzdata \
-    curl \
-    && rm -rf /var/cache/apk/*
+# Security & Localization
+# tzdata: Required for correct log timestamps (e.g. Asia/Shanghai)
+# ca-certificates: Required for HTTPS calls to upstream APIs
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -S gateway && adduser -S gateway -G gateway
 
-# 设置时区
-ENV TZ=Asia/Shanghai
-
-# 创建非 root 用户
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
-
-# 设置工作目录
 WORKDIR /app
 
-# 从构建阶段复制二进制文件
-COPY --from=builder /app/gateway /app/gateway
+# Copy binary from builder
+COPY --from=builder /app/llm-gateway .
 
-# 创建数据目录和数据库文件
-RUN mkdir -p /app/data && \
-    touch /app/data/gateway.db && \
-    chown -R appuser:appgroup /app
+# Ensure the app has permissions to create/write db and logs
+RUN chown -R gateway:gateway /app
 
-# 切换到非 root 用户
-USER appuser
+USER gateway
 
-# 暴露端口
+# Persistence targets
+# gateway.db  - SQLite database (Mount this!)
+# gateway.log - Application logs (Ephemeral, auto-rotated by app)
+
+ENV GIN_MODE=release
 EXPOSE 8000
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+# Healthcheck to ensure the service is actually responsive
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8000/health || exit 1
 
-# 启动命令
-CMD ["/app/gateway"]
+ENTRYPOINT ["./llm-gateway"]

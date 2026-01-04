@@ -2,11 +2,8 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"llm-gateway/core"
-	"llm-gateway/core/security"
 	"llm-gateway/models"
 	"net/http"
 	"os"
@@ -28,7 +25,8 @@ func main() {
 	log.SetLevel(logrus.InfoLevel)
 	log.SetFormatter(&logrus.JSONFormatter{})
 
-	// 配置日志输出：使用带轮转的文件写入器 (10MB 限制)
+	// 配置日志输出：同时输出到文件（供前端查看）和 Stdout（供 Docker 查看）
+	// 使用带轮转的文件写入器 (10MB 限制)，确保轻量化
 	rotator, err := core.NewLogRotator("gateway.log", 10)
 	if err == nil {
 		log.SetOutput(io.MultiWriter(os.Stdout, rotator))
@@ -45,6 +43,9 @@ func main() {
 		log.Fatal("Failed to initialize database:", err)
 	}
 
+	// [Auto-Maintenance] Start background task to prune old logs (Retention: 7 days)
+	startAutoPrune(db, log)
+
 	// 2. 初始化核心组件
 	// 创建 HTTP Client (Task 2: Dependency Injection)
 	httpClient := &http.Client{
@@ -60,17 +61,10 @@ func main() {
 	asyncLogger := core.NewAsyncRequestLogger(db, log)
 	defer asyncLogger.Close() // 确保程序退出时刷新剩余日志
 
-	// 初始化 SecretProvider (Task 4: Auto-Managed Encryption)
-	secretKey, err := getOrCreateSecretKey("gateway.key")
-	if err != nil {
-		log.Fatalf("Failed to load or generate secret key: %v", err)
-	}
-
-	sp, err := security.NewAESSecretProvider(secretKey)
-	if err != nil {
-		log.Fatalf("Failed to initialize secret provider: %v", err)
-	}
-	log.Info("🔒 Encryption enabled (using auto-managed key in 'gateway.key')")
+	// 初始化 SecretProvider
+	// ⚠️ 用户要求去除加密：使用明文存储 (NoOpSecretProvider)
+	sp := core.NewNoOpSecretProvider()
+	log.Info("🔓 Encryption DISABLED (Plain text mode requested)")
 
 	// 创建 LoadBalancer (Task 1 & 2)
 	lb, err := core.NewLoadBalancer(
@@ -263,44 +257,32 @@ func corsMiddleware() gin.HandlerFunc {
 	}
 }
 
+// startAutoPrune starts a background goroutine to clean up old request logs
+func startAutoPrune(db *gorm.DB, log *logrus.Logger) {
+	go func() {
+		log.Info("🧹 Auto-prune task started (Retention: 7 days)")
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
 
-// getOrCreateSecretKey 获取或创建持久化的加密密钥
-func getOrCreateSecretKey(filename string) (string, error) {
-	// 1. 尝试读取现有密钥
-	if _, err := os.Stat(filename); err == nil {
-		content, err := os.ReadFile(filename)
-		if err != nil {
-			return "", fmt.Errorf("failed to read key file: %w", err)
+		// Run once immediately on startup
+		pruneLogs(db, log)
+
+		for range ticker.C {
+			pruneLogs(db, log)
 		}
-		key := string(content)
-		if len(key) != 32 {
-			return "", fmt.Errorf("invalid key length in %s: expected 32 bytes, got %d", filename, len(key))
-		}
-		return key, nil
-	}
+	}()
+}
 
-	// 2. 生成新密钥 (32 bytes for AES-256)
-	// 注意：NewAESSecretProvider 接受的是原始字符串字节，要求 len(key) == 32
-	// 为了避免不可见字符问题，我们生成 16 字节的随机数据并 Hex 编码成 32 字符的字符串
-	// 这样 key 既是 32 字节长，又是纯文本可见的
+func pruneLogs(db *gorm.DB, log *logrus.Logger) {
+	// Delete logs older than 7 days
+	retentionDate := time.Now().AddDate(0, 0, -7)
+	result := db.Where("created_at < ?", retentionDate).Delete(&models.RequestLog{})
 	
-	// 这里我们直接生成 32 个随机可见字符可能比较麻烦，
-	// 更简单的做法是生成 32 字节的随机数，但为了方便文件查看，我们生成 16 字节随机数 -> Hex 编码 -> 32 字符
-	randomBytes := make([]byte, 16)
-	if _, err := rand.Read(randomBytes); err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	if result.Error != nil {
+		log.Errorf("❌ Failed to prune old logs: %v", result.Error)
+	} else if result.RowsAffected > 0 {
+		log.Infof("🧹 Pruned %d old request logs", result.RowsAffected)
+		// Optimize storage after deletion
+		db.Exec("VACUUM;") 
 	}
-	
-	// Hex 编码后的长度是 16 * 2 = 32
-	newKey := hex.EncodeToString(randomBytes)
-
-	// 3. 写入文件
-	if err := os.WriteFile(filename, []byte(newKey), 0600); err != nil {
-		return "", fmt.Errorf("failed to write key file: %w", err)
-	}
-
-	fmt.Printf("\n🔑 Generated new encryption key and saved to '%s'\n", filename)
-	fmt.Println("    Do not share this file if you are in production!")
-
-	return newKey, nil
 }
